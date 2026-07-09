@@ -1715,7 +1715,7 @@ var TraceSettingTab = class extends import_obsidian6.PluginSettingTab {
       })
     );
     new import_obsidian6.Setting(containerEl).setName("Retention age").setDesc(
-      "Report trace files older than this many days during verification. Leave blank to keep forever. Trace never deletes automatically."
+      "Move trace files older than this many days to trash during verification. Leave blank to keep forever."
     ).addText(
       (text) => text.setPlaceholder("Forever").setValue(
         this.plugin.settings.retentionMaxAgeDays === 0 ? "" : String(this.plugin.settings.retentionMaxAgeDays)
@@ -1736,7 +1736,7 @@ var TraceSettingTab = class extends import_obsidian6.PluginSettingTab {
       })
     );
     new import_obsidian6.Setting(containerEl).setName("Retention size").setDesc(
-      "Report total trace storage above this many megabytes during verification. Leave blank for infinite. Trace never deletes automatically."
+      "Move oldest trace files to trash until total trace storage is under this many megabytes. Leave blank for infinite."
     ).addText(
       (text) => text.setPlaceholder("Infinite").setValue(
         this.plugin.settings.retentionMaxBytes === 0 ? "" : String(this.plugin.settings.retentionMaxBytes / 1e6)
@@ -1884,28 +1884,49 @@ function formatBytes(bytes) {
   if (bytes < 1e6) return `${Math.round(bytes / 1e3)} KB`;
   return `${(bytes / 1e6).toFixed(1)} MB`;
 }
-function addRetentionFindings(plugin, files, logical) {
+async function applyRetention(plugin, files, logical) {
   const { retentionMaxAgeDays, retentionMaxBytes } = plugin.settings;
+  const removals = /* @__PURE__ */ new Map();
+  const mark = (file, reason) => {
+    const existing = removals.get(file.path) ?? { file: file.file, reasons: [] };
+    existing.reasons.push(reason);
+    removals.set(file.path, existing);
+  };
   if (retentionMaxAgeDays > 0) {
     const now = Date.now();
     const maxAgeMs = retentionMaxAgeDays * 24 * 60 * 60 * 1e3;
     for (const file of files) {
       if (now - file.mtime > maxAgeMs) {
         const ageDays = Math.floor((now - file.mtime) / (24 * 60 * 60 * 1e3));
-        logical.push(
-          `Retention: "${file.path}" was last modified ${ageDays} days ago, beyond the ${retentionMaxAgeDays}-day limit. Trace keeps it until you archive or delete it manually.`
-        );
+        mark(file, `${ageDays} days old, beyond the ${retentionMaxAgeDays}-day limit`);
       }
     }
   }
   if (retentionMaxBytes > 0) {
-    const total = files.reduce((sum, file) => sum + file.size, 0);
-    if (total > retentionMaxBytes) {
-      logical.push(
-        `Retention: trace files use ${formatBytes(total)}, above the ${formatBytes(retentionMaxBytes)} limit. Trace keeps old files until you archive or delete them manually.`
+    let total = files.reduce((sum, file) => sum + file.size, 0);
+    const alreadyMarkedSize = [...removals.keys()].reduce((sum, path) => {
+      const file = files.find((candidate) => candidate.path === path);
+      return sum + (file?.size ?? 0);
+    }, 0);
+    total -= alreadyMarkedSize;
+    for (const file of files.filter((candidate) => !removals.has(candidate.path)).sort((a, b) => a.mtime - b.mtime)) {
+      if (total <= retentionMaxBytes) break;
+      mark(
+        file,
+        `total trace storage exceeds ${formatBytes(retentionMaxBytes)}`
       );
+      total -= file.size;
     }
   }
+  for (const [path, removal] of removals) {
+    plugin.guard.dropPath(path);
+    await plugin.chain.remove(path);
+    await plugin.app.fileManager.trashFile(removal.file);
+    logical.push(
+      `Retention removed "${path}" (${removal.reasons.join("; ")}).`
+    );
+  }
+  if (removals.size > 0) plugin.registry.rebuild();
 }
 async function verifyAllTraces(plugin) {
   const files = [];
@@ -1917,6 +1938,7 @@ async function verifyAllTraces(plugin) {
     if (!(file instanceof import_obsidian7.TFile)) continue;
     retentionFiles.push({
       path,
+      file,
       size: file.stat.size,
       mtime: file.stat.mtime
     });
@@ -1976,7 +1998,7 @@ async function verifyAllTraces(plugin) {
       `Recorded trace "${path}" no longer exists on disk \u2014 deleted or moved outside Obsidian.`
     );
   }
-  addRetentionFindings(plugin, retentionFiles, logical);
+  await applyRetention(plugin, retentionFiles, logical);
   return { files, logical, orphanedStates };
 }
 async function rebaseline(plugin, file) {

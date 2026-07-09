@@ -112,6 +112,7 @@ export interface AllTracesReport {
 
 interface RetentionFileInfo {
 	path: string;
+	file: TFile;
 	size: number;
 	mtime: number;
 }
@@ -121,32 +122,58 @@ function formatBytes(bytes: number): string {
 	return `${(bytes / 1_000_000).toFixed(1)} MB`;
 }
 
-function addRetentionFindings(
+async function applyRetention(
 	plugin: TracePlugin,
 	files: RetentionFileInfo[],
 	logical: string[]
-): void {
+): Promise<void> {
 	const { retentionMaxAgeDays, retentionMaxBytes } = plugin.settings;
+	const removals = new Map<string, { file: TFile; reasons: string[] }>();
+	const mark = (file: RetentionFileInfo, reason: string): void => {
+		const existing = removals.get(file.path) ?? { file: file.file, reasons: [] };
+		existing.reasons.push(reason);
+		removals.set(file.path, existing);
+	};
+
 	if (retentionMaxAgeDays > 0) {
 		const now = Date.now();
 		const maxAgeMs = retentionMaxAgeDays * 24 * 60 * 60 * 1000;
 		for (const file of files) {
 			if (now - file.mtime > maxAgeMs) {
 				const ageDays = Math.floor((now - file.mtime) / (24 * 60 * 60 * 1000));
-				logical.push(
-					`Retention: "${file.path}" was last modified ${ageDays} days ago, beyond the ${retentionMaxAgeDays}-day limit. Trace keeps it until you archive or delete it manually.`
-				);
+				mark(file, `${ageDays} days old, beyond the ${retentionMaxAgeDays}-day limit`);
 			}
 		}
 	}
+
 	if (retentionMaxBytes > 0) {
-		const total = files.reduce((sum, file) => sum + file.size, 0);
-		if (total > retentionMaxBytes) {
-			logical.push(
-				`Retention: trace files use ${formatBytes(total)}, above the ${formatBytes(retentionMaxBytes)} limit. Trace keeps old files until you archive or delete them manually.`
+		let total = files.reduce((sum, file) => sum + file.size, 0);
+		const alreadyMarkedSize = [...removals.keys()].reduce((sum, path) => {
+			const file = files.find((candidate) => candidate.path === path);
+			return sum + (file?.size ?? 0);
+		}, 0);
+		total -= alreadyMarkedSize;
+		for (const file of files
+			.filter((candidate) => !removals.has(candidate.path))
+			.sort((a, b) => a.mtime - b.mtime)) {
+			if (total <= retentionMaxBytes) break;
+			mark(
+				file,
+				`total trace storage exceeds ${formatBytes(retentionMaxBytes)}`
 			);
+			total -= file.size;
 		}
 	}
+
+	for (const [path, removal] of removals) {
+		plugin.guard.dropPath(path);
+		await plugin.chain.remove(path);
+		await plugin.app.fileManager.trashFile(removal.file);
+		logical.push(
+			`Retention removed "${path}" (${removal.reasons.join("; ")}).`
+		);
+	}
+	if (removals.size > 0) plugin.registry.rebuild();
 }
 
 /** Verify every known trace file plus per-logical-trace sanity checks. */
@@ -163,6 +190,7 @@ export async function verifyAllTraces(
 		if (!(file instanceof TFile)) continue;
 		retentionFiles.push({
 			path,
+			file,
 			size: file.stat.size,
 			mtime: file.stat.mtime,
 		});
@@ -233,7 +261,7 @@ export async function verifyAllTraces(
 		);
 	}
 
-	addRetentionFindings(plugin, retentionFiles, logical);
+	await applyRetention(plugin, retentionFiles, logical);
 
 	return { files, logical, orphanedStates };
 }

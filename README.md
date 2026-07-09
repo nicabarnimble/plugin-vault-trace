@@ -106,8 +106,8 @@ If local identity is missing but trace files already exist, Trace asks whether t
 - **Rotation** — `auto` starts a new segment when the active writer file reaches the size or age limit; `never` keeps one file per writer.
 - **Max segment size** — auto-rotation size limit. Default: 1 megabyte.
 - **Max segment age** — auto-rotation age limit. Default: 365 days.
-- **Retention age** — report trace files older than this many days during **Verify all**. Blank means keep forever.
-- **Retention size** — report total trace storage above this many megabytes during **Verify all**. Blank means infinite.
+- **Retention age** — move trace files older than this many days to trash during **Verify all**. Blank means keep forever.
+- **Retention size** — move oldest trace files to trash until total trace storage is under this many megabytes during **Verify all**. Blank means infinite.
 - **Enforcement mode** — `enforce` reverts non-append changes to own files; `warn` only notifies.
 - **Read-only guard** — CodeMirror protection for committed entries.
 - **Detect traces by frontmatter** — treat files with `trace: true` as trace files.
@@ -119,7 +119,7 @@ Reserved protocol tags are `#genesis`, `#rebaseline`, `#attest`, and `#rotate`. 
 
 ## Rotation and retention
 
-Rotation keeps active files manageable. Retention is only reporting.
+Rotation keeps active files manageable. Retention removes old local copies from Obsidian when you choose finite limits.
 
 Default rotation:
 
@@ -132,9 +132,10 @@ Default retention:
 
 - **Retention age** is blank, meaning keep forever.
 - **Retention size** is blank, meaning infinite.
-- Trace never deletes trace files automatically.
 
-If you set a retention limit, **Verify all** reports files or total trace storage that exceed the policy. You can then archive or delete old segments manually. Evidence loss stays explicit.
+If you set a retention limit, **Verify all** applies it: files older than the age limit are moved to trash, and the oldest trace files are moved to trash until total trace storage is under the size limit. Trace removes its remembered chain state for retained-out files so future verification treats the removal as intentional.
+
+Use finite retention only when old segments are backed up, captured by an outside system, or no longer needed in Obsidian.
 
 ## Threat model
 
@@ -333,7 +334,7 @@ With default settings, Trace rotates to a new segment at 1 megabyte or 365 days.
 
 ### Does retention delete old logs?
 
-No. Retention settings are report-only. **Verify all** tells you when files exceed your age or size policy; you decide whether to archive or delete them.
+If retention limits are blank, no. If you set finite retention limits, **Verify all** moves matching old trace files to trash and removes their local remembered chain state. This is intentional evidence removal, so use finite retention only when old segments are backed up or no longer needed in Obsidian.
 
 ### What is re-baseline?
 

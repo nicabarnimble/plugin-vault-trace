@@ -142,7 +142,7 @@ export class TraceSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName("Retention age")
 			.setDesc(
-				"Report trace files older than this many days during verification. Leave blank to keep forever. Trace never deletes automatically."
+				"Move trace files older than this many days to trash during verification. Leave blank to keep forever."
 			)
 			.addText((text) =>
 				text
@@ -172,7 +172,7 @@ export class TraceSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName("Retention size")
 			.setDesc(
-				"Report total trace storage above this many megabytes during verification. Leave blank for infinite. Trace never deletes automatically."
+				"Move oldest trace files to trash until total trace storage is under this many megabytes. Leave blank for infinite."
 			)
 			.addText((text) =>
 				text
