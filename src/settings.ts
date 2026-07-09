@@ -139,7 +139,14 @@ export class TraceSettingTab extends PluginSettingTab {
 					})
 			);
 
-		new Setting(containerEl)
+		const retentionEl = containerEl.createDiv({ cls: "trace-danger-zone" });
+		new Setting(retentionEl)
+			.setName("Danger zone: retention")
+			.setDesc(
+				"Retention moves old trace files to trash during verification. Leave limits blank unless older segments are backed up or no longer needed in Obsidian."
+			);
+
+		new Setting(retentionEl)
 			.setName("Retention age")
 			.setDesc(
 				"Move trace files older than this many days to trash during verification. Leave blank to keep forever."
@@ -169,7 +176,7 @@ export class TraceSettingTab extends PluginSettingTab {
 					})
 			);
 
-		new Setting(containerEl)
+		new Setting(retentionEl)
 			.setName("Retention size")
 			.setDesc(
 				"Move oldest trace files to trash until total trace storage is under this many megabytes. Leave blank for infinite."

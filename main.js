@@ -1714,7 +1714,11 @@ var TraceSettingTab = class extends import_obsidian6.PluginSettingTab {
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian6.Setting(containerEl).setName("Retention age").setDesc(
+    const retentionEl = containerEl.createDiv({ cls: "trace-danger-zone" });
+    new import_obsidian6.Setting(retentionEl).setName("Danger zone: retention").setDesc(
+      "Retention moves old trace files to trash during verification. Leave limits blank unless older segments are backed up or no longer needed in Obsidian."
+    );
+    new import_obsidian6.Setting(retentionEl).setName("Retention age").setDesc(
       "Move trace files older than this many days to trash during verification. Leave blank to keep forever."
     ).addText(
       (text) => text.setPlaceholder("Forever").setValue(
@@ -1735,7 +1739,7 @@ var TraceSettingTab = class extends import_obsidian6.PluginSettingTab {
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian6.Setting(containerEl).setName("Retention size").setDesc(
+    new import_obsidian6.Setting(retentionEl).setName("Retention size").setDesc(
       "Move oldest trace files to trash until total trace storage is under this many megabytes. Leave blank for infinite."
     ).addText(
       (text) => text.setPlaceholder("Infinite").setValue(

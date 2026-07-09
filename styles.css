@@ -62,3 +62,14 @@
 .trace-verify-detail {
 	margin-block: var(--size-4-2) 0;
 }
+
+.trace-danger-zone {
+	border: 1px solid var(--background-modifier-error-border);
+	border-radius: var(--radius-l);
+	margin-block: var(--size-4-4);
+	padding: var(--size-4-2) var(--size-4-3);
+}
+
+.trace-danger-zone .setting-item:first-child {
+	border-top: 0;
+}

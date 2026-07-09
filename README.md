@@ -106,8 +106,8 @@ If local identity is missing but trace files already exist, Trace asks whether t
 - **Rotation** — `auto` starts a new segment when the active writer file reaches the size or age limit; `never` keeps one file per writer.
 - **Max segment size** — auto-rotation size limit. Default: 1 megabyte.
 - **Max segment age** — auto-rotation age limit. Default: 365 days.
-- **Retention age** — move trace files older than this many days to trash during **Verify all**. Blank means keep forever.
-- **Retention size** — move oldest trace files to trash until total trace storage is under this many megabytes during **Verify all**. Blank means infinite.
+- **Retention age** — in the retention danger zone. Move trace files older than this many days to trash during **Verify all**. Blank means keep forever.
+- **Retention size** — in the retention danger zone. Move oldest trace files to trash until total trace storage is under this many megabytes during **Verify all**. Blank means infinite.
 - **Enforcement mode** — `enforce` reverts non-append changes to own files; `warn` only notifies.
 - **Read-only guard** — CodeMirror protection for committed entries.
 - **Detect traces by frontmatter** — treat files with `trace: true` as trace files.
@@ -133,7 +133,7 @@ Default retention:
 - **Retention age** is blank, meaning keep forever.
 - **Retention size** is blank, meaning infinite.
 
-If you set a retention limit, **Verify all** applies it: files older than the age limit are moved to trash, and the oldest trace files are moved to trash until total trace storage is under the size limit. Trace removes its remembered chain state for retained-out files so future verification treats the removal as intentional.
+Retention settings live in a small danger zone in settings because finite limits remove local trace files. If you set a retention limit, **Verify all** applies it: files older than the age limit are moved to trash, and the oldest trace files are moved to trash until total trace storage is under the size limit. Trace removes its remembered chain state for retained-out files so future verification treats the removal as intentional.
 
 Use finite retention only when old segments are backed up, captured by an outside system, or no longer needed in Obsidian.
 
