@@ -1715,13 +1715,20 @@ var TraceSettingTab = class extends import_obsidian6.PluginSettingTab {
       })
     );
     new import_obsidian6.Setting(containerEl).setName("Retention age").setDesc(
-      "Report trace files older than this many days during verification. Use 0 or blank to keep forever. Trace never deletes automatically."
+      "Report trace files older than this many days during verification. Leave blank to keep forever. Trace never deletes automatically."
     ).addText(
-      (text) => text.setPlaceholder("0").setValue(String(this.plugin.settings.retentionMaxAgeDays)).onChange(async (value) => {
+      (text) => text.setPlaceholder("Forever").setValue(
+        this.plugin.settings.retentionMaxAgeDays === 0 ? "" : String(this.plugin.settings.retentionMaxAgeDays)
+      ).onChange(async (value) => {
         const trimmed = value.trim();
-        const days = trimmed === "" ? 0 : Number(trimmed);
-        if (!Number.isFinite(days) || days < 0) {
-          new import_obsidian6.Notice("Retention age must be 0 or a positive number of days.");
+        if (trimmed === "") {
+          this.plugin.settings.retentionMaxAgeDays = 0;
+          await this.plugin.saveSettings();
+          return;
+        }
+        const days = Number(trimmed);
+        if (!Number.isFinite(days) || days <= 0) {
+          new import_obsidian6.Notice("Retention age must be blank or a positive number of days.");
           return;
         }
         this.plugin.settings.retentionMaxAgeDays = Math.round(days);
@@ -1729,15 +1736,20 @@ var TraceSettingTab = class extends import_obsidian6.PluginSettingTab {
       })
     );
     new import_obsidian6.Setting(containerEl).setName("Retention size").setDesc(
-      "Report total trace storage above this many megabytes during verification. Use 0 or blank for infinite. Trace never deletes automatically."
+      "Report total trace storage above this many megabytes during verification. Leave blank for infinite. Trace never deletes automatically."
     ).addText(
-      (text) => text.setPlaceholder("0").setValue(
-        this.plugin.settings.retentionMaxBytes === 0 ? "0" : String(this.plugin.settings.retentionMaxBytes / 1e6)
+      (text) => text.setPlaceholder("Infinite").setValue(
+        this.plugin.settings.retentionMaxBytes === 0 ? "" : String(this.plugin.settings.retentionMaxBytes / 1e6)
       ).onChange(async (value) => {
         const trimmed = value.trim();
-        const mb = trimmed === "" ? 0 : Number(trimmed);
-        if (!Number.isFinite(mb) || mb < 0) {
-          new import_obsidian6.Notice("Retention size must be 0 or a positive number of megabytes.");
+        if (trimmed === "") {
+          this.plugin.settings.retentionMaxBytes = 0;
+          await this.plugin.saveSettings();
+          return;
+        }
+        const mb = Number(trimmed);
+        if (!Number.isFinite(mb) || mb <= 0) {
+          new import_obsidian6.Notice("Retention size must be blank or a positive number of megabytes.");
           return;
         }
         this.plugin.settings.retentionMaxBytes = Math.round(mb * 1e6);

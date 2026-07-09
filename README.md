@@ -132,8 +132,8 @@ If local identity is missing but trace files already exist, Trace asks whether t
 - **Rotation** — `auto` starts a new file segment when the active writer file reaches the size or age limit; `never` keeps one file per writer.
 - **Max segment size** — auto-rotation size limit. Default: 1 megabyte.
 - **Max segment age** — auto-rotation age limit. Default: 365 days.
-- **Retention age** — report trace files older than this many days during **Verify all**. Default: 0, meaning forever.
-- **Retention size** — report total trace storage above this many megabytes during **Verify all**. Default: 0, meaning infinite.
+- **Retention age** — report trace files older than this many days during **Verify all**. Blank means forever.
+- **Retention size** — report total trace storage above this many megabytes during **Verify all**. Blank means infinite.
 - **Display template** — reading-view decoration using `{{seq}}`, `{{timestamp}}`, `{{actor}}`, `{{tag}}`, `{{text}}`, `{{hash}}`.
 - **Tags** — user tag vocabulary offered by the append modal.
 
@@ -175,8 +175,8 @@ Retention is separate from rotation. Trace keeps old segments forever by default
 
 Retention settings are intentionally conservative:
 
-- **Retention age** defaults to `0`, meaning keep forever.
-- **Retention size** defaults to `0`, meaning infinite.
+- **Retention age** defaults to blank, meaning keep forever.
+- **Retention size** defaults to blank, meaning infinite.
 - Trace never deletes trace files automatically.
 
 If you set either retention limit, **Verify all** reports files or total trace storage that exceed the policy. You can then archive or delete old segments manually. This keeps evidence loss explicit instead of surprising.
