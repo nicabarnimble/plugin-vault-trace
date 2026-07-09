@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760" role="img" aria-labelledby="title desc">
+  <title id="title">Trace read-only guard</title>
+  <desc id="desc">A trace file in reading view with a notice explaining that existing entries are append-only.</desc>
+  <rect width="1200" height="760" fill="#1e1e1e"/>
+  <rect x="150" y="90" width="900" height="580" rx="12" fill="#252525" stroke="#404040"/>
+  <text x="205" y="155" fill="#f2f2f2" font-family="Inter, Arial, sans-serif" font-size="30" font-weight="700">project-log.laptop.md</text>
+  <text x="205" y="220" fill="#8b949e" font-family="monospace" font-size="18">--- trace: true · format: tracev1 · actor_name: Laptop ---</text>
+  <text x="205" y="285" fill="#8b949e" font-family="monospace" font-size="20">1 | 2026-07-08T10:00:00Z | Laptop | #genesis | Trace started | #1234abcd</text>
+  <text x="205" y="335" fill="#8b949e" font-family="monospace" font-size="20">2 | 2026-07-08T10:05:00Z | Laptop | #note | Decision recorded | #5678ef90</text>
+  <line x1="205" y1="385" x2="995" y2="385" stroke="#555" stroke-dasharray="8 8"/>
+  <text x="205" y="435" fill="#f2f2f2" font-family="Inter, Arial, sans-serif" font-size="20">Append new canonical entries below this line.</text>
+  <rect x="275" y="565" width="650" height="70" rx="12" fill="#3a2d10" stroke="#ffcf5c"/>
+  <text x="310" y="608" fill="#ffdf80" font-family="Inter, Arial, sans-serif" font-size="20">Trace entries are append-only — existing entries cannot be edited.</text>
+</svg>

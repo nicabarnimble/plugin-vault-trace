@@ -1,0 +1,10 @@
+{
+	"id": "trace",
+	"name": "Trace",
+	"version": "1.0.0",
+	"minAppVersion": "1.5.8",
+	"description": "Append-only, tamper-evident event log for your vault. A verifiable timeline external tools can trust.",
+	"author": "Nicabar Nimble",
+	"authorUrl": "https://github.com/NicabarNimble",
+	"isDesktopOnly": false
+}

@@ -1,0 +1,64 @@
+.trace-entry {
+	font-variant-numeric: tabular-nums;
+}
+
+.trace-literal {
+	color: var(--text-muted);
+}
+
+.trace-seq,
+.trace-hash {
+	color: var(--text-faint);
+	font-family: var(--font-monospace);
+}
+
+.trace-timestamp {
+	color: var(--text-muted);
+	font-family: var(--font-monospace);
+}
+
+.trace-actor {
+	color: var(--text-accent);
+	font-weight: var(--font-medium);
+}
+
+.trace-tag {
+	color: var(--text-success);
+	font-family: var(--font-monospace);
+}
+
+.trace-text {
+	color: var(--text-normal);
+}
+
+.trace-error {
+	color: var(--text-error);
+}
+
+.trace-append-text textarea {
+	width: 100%;
+}
+
+.trace-verify-file {
+	border-top: 1px solid var(--background-modifier-border);
+	padding-block: var(--size-4-3);
+}
+
+.trace-verify-title {
+	display: flex;
+	gap: var(--size-4-2);
+	align-items: center;
+	font-weight: var(--font-semibold);
+}
+
+.trace-verify-ok {
+	color: var(--text-success);
+}
+
+.trace-verify-fail {
+	color: var(--text-warning);
+}
+
+.trace-verify-detail {
+	margin-block: var(--size-4-2) 0;
+}

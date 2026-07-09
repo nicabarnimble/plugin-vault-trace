@@ -1,0 +1,61 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify tag matches manifest and package
+        run: |
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const tag = process.env.GITHUB_REF_NAME;
+          const manifest = JSON.parse(fs.readFileSync('manifest.json', 'utf8'));
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          const versions = JSON.parse(fs.readFileSync('versions.json', 'utf8'));
+          if (!/^\d+\.\d+\.\d+$/.test(tag)) {
+            throw new Error(`Release tag ${tag} must be an exact version with no v prefix`);
+          }
+          if (tag !== manifest.version || tag !== pkg.version) {
+            throw new Error(`Tag ${tag} must equal manifest ${manifest.version} and package ${pkg.version}`);
+          }
+          if (!versions[tag]) {
+            throw new Error(`versions.json is missing ${tag}`);
+          }
+          NODE
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            main.js
+            manifest.json
+            styles.css

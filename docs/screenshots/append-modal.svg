@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760" role="img" aria-labelledby="title desc">
+  <title id="title">Trace append entry modal</title>
+  <desc id="desc">A Trace modal showing trace selection, tag selection, and an entry text area.</desc>
+  <rect width="1200" height="760" fill="#1e1e1e"/>
+  <rect x="250" y="95" width="700" height="570" rx="18" fill="#2a2a2a" stroke="#4a4a4a"/>
+  <text x="300" y="160" fill="#f2f2f2" font-family="Inter, Arial, sans-serif" font-size="34" font-weight="700">Append entry</text>
+  <text x="300" y="225" fill="#c9c9c9" font-family="Inter, Arial, sans-serif" font-size="20">Trace</text>
+  <rect x="300" y="245" width="600" height="54" rx="8" fill="#1f1f1f" stroke="#555"/>
+  <text x="320" y="280" fill="#f2f2f2" font-family="Inter, Arial, sans-serif" font-size="20">Project log</text>
+  <text x="300" y="350" fill="#c9c9c9" font-family="Inter, Arial, sans-serif" font-size="20">Tag</text>
+  <rect x="300" y="370" width="600" height="54" rx="8" fill="#1f1f1f" stroke="#555"/>
+  <text x="320" y="405" fill="#7ee787" font-family="Inter, Arial, sans-serif" font-size="20">#agent</text>
+  <text x="300" y="475" fill="#c9c9c9" font-family="Inter, Arial, sans-serif" font-size="20">Text</text>
+  <rect x="300" y="495" width="600" height="96" rx="8" fill="#1f1f1f" stroke="#555"/>
+  <text x="320" y="535" fill="#f2f2f2" font-family="Inter, Arial, sans-serif" font-size="20">Completed nightly export</text>
+  <rect x="765" y="615" width="135" height="50" rx="8" fill="#8b5cf6"/>
+  <text x="803" y="647" fill="#ffffff" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="700">Append</text>
+</svg>

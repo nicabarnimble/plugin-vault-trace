@@ -1,0 +1,37 @@
+{
+	"name": "trace",
+	"version": "1.0.0",
+	"description": "Append-only, tamper-evident event log for your vault. A verifiable timeline external tools can trust.",
+	"main": "main.js",
+	"scripts": {
+		"dev": "node esbuild.config.mjs",
+		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+		"lint": "eslint .",
+		"test": "vitest run",
+		"version": "node version-bump.mjs && git add manifest.json versions.json"
+	},
+	"keywords": [
+		"obsidian-plugin",
+		"append-only",
+		"tamper-evident",
+		"audit-log",
+		"hash-chain"
+	],
+	"author": "Nicabar Nimble",
+	"license": "MIT",
+	"devDependencies": {
+		"@codemirror/state": "^6.5.0",
+		"@codemirror/view": "^6.36.0",
+		"@eslint/js": "^9.30.1",
+		"@eslint/json": "0.14.0",
+		"@types/node": "^22.0.0",
+		"esbuild": "^0.25.0",
+		"eslint": "^9.30.1",
+		"eslint-plugin-obsidianmd": "^0.4.1",
+		"obsidian": "1.8.7",
+		"tslib": "^2.8.0",
+		"typescript": "~5.8.3",
+		"typescript-eslint": "^8.35.1",
+		"vitest": "^3.2.0"
+	}
+}
