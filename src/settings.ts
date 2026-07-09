@@ -26,6 +26,10 @@ export interface TraceSettings {
 	rotationMaxBytes: number;
 	/** Rotate when the active writer file is this old. */
 	rotationMaxAgeDays: number;
+	/** Report trace files older than this many days; 0 means keep forever. */
+	retentionMaxAgeDays: number;
+	/** Report total trace storage above this many bytes; 0 means infinite. */
+	retentionMaxBytes: number;
 }
 
 export const DEFAULT_SETTINGS: TraceSettings = {
@@ -39,6 +43,8 @@ export const DEFAULT_SETTINGS: TraceSettings = {
 	rotationMode: "auto",
 	rotationMaxBytes: 1_000_000,
 	rotationMaxAgeDays: 365,
+	retentionMaxAgeDays: 0,
+	retentionMaxBytes: 0,
 };
 
 const TAG_TOKEN_RE = /^[a-z0-9][a-z0-9_-]*$/;
@@ -129,6 +135,52 @@ export class TraceSettingTab extends PluginSettingTab {
 							return;
 						}
 						this.plugin.settings.rotationMaxAgeDays = Math.round(days);
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName("Retention age")
+			.setDesc(
+				"Report trace files older than this many days during verification. Use 0 or blank to keep forever. Trace never deletes automatically."
+			)
+			.addText((text) =>
+				text
+					.setPlaceholder("0")
+					.setValue(String(this.plugin.settings.retentionMaxAgeDays))
+					.onChange(async (value) => {
+						const trimmed = value.trim();
+						const days = trimmed === "" ? 0 : Number(trimmed);
+						if (!Number.isFinite(days) || days < 0) {
+							new Notice("Retention age must be 0 or a positive number of days.");
+							return;
+						}
+						this.plugin.settings.retentionMaxAgeDays = Math.round(days);
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName("Retention size")
+			.setDesc(
+				"Report total trace storage above this many megabytes during verification. Use 0 or blank for infinite. Trace never deletes automatically."
+			)
+			.addText((text) =>
+				text
+					.setPlaceholder("0")
+					.setValue(
+						this.plugin.settings.retentionMaxBytes === 0
+							? "0"
+							: String(this.plugin.settings.retentionMaxBytes / 1_000_000)
+					)
+					.onChange(async (value) => {
+						const trimmed = value.trim();
+						const mb = trimmed === "" ? 0 : Number(trimmed);
+						if (!Number.isFinite(mb) || mb < 0) {
+							new Notice("Retention size must be 0 or a positive number of megabytes.");
+							return;
+						}
+						this.plugin.settings.retentionMaxBytes = Math.round(mb * 1_000_000);
 						await this.plugin.saveSettings();
 					})
 			);

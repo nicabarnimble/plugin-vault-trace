@@ -110,6 +110,45 @@ export interface AllTracesReport {
 	orphanedStates: string[];
 }
 
+interface RetentionFileInfo {
+	path: string;
+	size: number;
+	mtime: number;
+}
+
+function formatBytes(bytes: number): string {
+	if (bytes < 1_000_000) return `${Math.round(bytes / 1_000)} KB`;
+	return `${(bytes / 1_000_000).toFixed(1)} MB`;
+}
+
+function addRetentionFindings(
+	plugin: TracePlugin,
+	files: RetentionFileInfo[],
+	logical: string[]
+): void {
+	const { retentionMaxAgeDays, retentionMaxBytes } = plugin.settings;
+	if (retentionMaxAgeDays > 0) {
+		const now = Date.now();
+		const maxAgeMs = retentionMaxAgeDays * 24 * 60 * 60 * 1000;
+		for (const file of files) {
+			if (now - file.mtime > maxAgeMs) {
+				const ageDays = Math.floor((now - file.mtime) / (24 * 60 * 60 * 1000));
+				logical.push(
+					`Retention: "${file.path}" was last modified ${ageDays} days ago, beyond the ${retentionMaxAgeDays}-day limit. Trace keeps it until you archive or delete it manually.`
+				);
+			}
+		}
+	}
+	if (retentionMaxBytes > 0) {
+		const total = files.reduce((sum, file) => sum + file.size, 0);
+		if (total > retentionMaxBytes) {
+			logical.push(
+				`Retention: trace files use ${formatBytes(total)}, above the ${formatBytes(retentionMaxBytes)} limit. Trace keeps old files until you archive or delete them manually.`
+			);
+		}
+	}
+}
+
 /** Verify every known trace file plus per-logical-trace sanity checks. */
 export async function verifyAllTraces(
 	plugin: TracePlugin
@@ -117,10 +156,16 @@ export async function verifyAllTraces(
 	const files: FileReport[] = [];
 	const logical: string[] = [];
 	const byTrace = new Map<string, FileReport[]>();
+	const retentionFiles: RetentionFileInfo[] = [];
 
 	for (const [path, meta] of plugin.registry.all()) {
 		const file = plugin.app.vault.getAbstractFileByPath(path);
 		if (!(file instanceof TFile)) continue;
+		retentionFiles.push({
+			path,
+			size: file.stat.size,
+			mtime: file.stat.mtime,
+		});
 		const report = await verifyFile(plugin, file);
 		files.push(report);
 		if (meta) {
@@ -187,6 +232,8 @@ export async function verifyAllTraces(
 			`Recorded trace "${path}" no longer exists on disk — deleted or moved outside Obsidian.`
 		);
 	}
+
+	addRetentionFindings(plugin, retentionFiles, logical);
 
 	return { files, logical, orphanedStates };
 }
