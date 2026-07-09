@@ -3,7 +3,7 @@
   <desc id="desc">A trace file in reading view with a notice explaining that existing entries are append-only.</desc>
   <rect width="1200" height="760" fill="#1e1e1e"/>
   <rect x="150" y="90" width="900" height="580" rx="12" fill="#252525" stroke="#404040"/>
-  <text x="205" y="155" fill="#f2f2f2" font-family="Inter, Arial, sans-serif" font-size="30" font-weight="700">project-log.laptop.md</text>
+  <text x="205" y="155" fill="#f2f2f2" font-family="Inter, Arial, sans-serif" font-size="30" font-weight="700">0001-2026-07.laptop.md</text>
   <text x="205" y="220" fill="#8b949e" font-family="monospace" font-size="18">--- trace: true · format: tracev1 · actor_name: Laptop ---</text>
   <text x="205" y="285" fill="#8b949e" font-family="monospace" font-size="20">1 | 2026-07-08T10:00:00Z | Laptop | #genesis | Trace started | #1234abcd</text>
   <text x="205" y="335" fill="#8b949e" font-family="monospace" font-size="20">2 | 2026-07-08T10:05:00Z | Laptop | #note | Decision recorded | #5678ef90</text>

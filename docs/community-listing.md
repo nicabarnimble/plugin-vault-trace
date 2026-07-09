@@ -2,7 +2,7 @@
 
 ## Listing description
 
-Trace creates append-only, tamper-evident Markdown logs for your vault: a verifiable timeline of what happened when. Each device or agent writes its own hash-chained file, while external tools can parse, verify, attest file changes, and merge timelines without the plugin installed.
+Trace creates append-only, tamper-evident Markdown timelines for your vault. Each device or agent writes its own hash-chained segment, while external tools can parse, verify, attest file changes, check progression from stored heads, and merge timelines without the plugin installed.
 
 ## Suggested category
 

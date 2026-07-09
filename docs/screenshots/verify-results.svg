@@ -6,11 +6,11 @@
   <text x="235" y="155" fill="#f2f2f2" font-family="Inter, Arial, sans-serif" font-size="34" font-weight="700">Verify all</text>
   <rect x="235" y="205" width="730" height="135" rx="12" fill="#1f1f1f" stroke="#3f3f3f"/>
   <text x="265" y="250" fill="#7ee787" font-family="Inter, Arial, sans-serif" font-size="24" font-weight="700">OK</text>
-  <text x="320" y="250" fill="#f2f2f2" font-family="Inter, Arial, sans-serif" font-size="22">Traces/project-log.laptop.md</text>
+  <text x="320" y="250" fill="#f2f2f2" font-family="Inter, Arial, sans-serif" font-size="22">Traces/project-log/0001-2026-07.laptop.md</text>
   <text x="320" y="292" fill="#c9c9c9" font-family="Inter, Arial, sans-serif" font-size="18">12 entries verified; head #a1b2c3d4.</text>
   <rect x="235" y="370" width="730" height="180" rx="12" fill="#1f1f1f" stroke="#3f3f3f"/>
   <text x="265" y="415" fill="#ffcf5c" font-family="Inter, Arial, sans-serif" font-size="24" font-weight="700">Check</text>
-  <text x="350" y="415" fill="#f2f2f2" font-family="Inter, Arial, sans-serif" font-size="22">Traces/project-log.agent-a.md</text>
+  <text x="350" y="415" fill="#f2f2f2" font-family="Inter, Arial, sans-serif" font-size="22">Traces/project-log/0001-2026-07.agent-a.md</text>
   <text x="350" y="457" fill="#c9c9c9" font-family="Inter, Arial, sans-serif" font-size="18">entry 8 (line 15): anchor does not match recomputed hash</text>
   <text x="350" y="490" fill="#c9c9c9" font-family="Inter, Arial, sans-serif" font-size="18">content changed outside the append path</text>
   <rect x="765" y="575" width="200" height="50" rx="8" fill="#8b5cf6"/>
