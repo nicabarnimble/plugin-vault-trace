@@ -27,11 +27,13 @@ export {
 	escapeText,
 	formatAttestationPayload,
 	formatEntryLine,
+	formatRotationPayload,
 	headOf,
 	isValidSlug,
 	mergeTimelines,
 	parseAttestationPayload,
 	parseEntryLine,
+	parseRotationPayload,
 	parseTrace,
 	sha256Bytes,
 	slugify,
@@ -54,6 +56,8 @@ export type {
 	ParseResult,
 	ProgressionResult,
 	ProgressionStatus,
+	RotationParseResult,
+	RotationPayload,
 	TimelineItem,
 	TraceEntry,
 	TraceHead,
@@ -75,9 +79,35 @@ export function nowTimestamp(now: Date = new Date()): string {
 	return now.toISOString().replace(/\.\d{3}Z$/, "Z");
 }
 
-/** Build the file basename for a writer's file of a logical trace. */
+/** Build the legacy flat basename for a writer's file of a logical trace. */
 export function traceFileName(traceSlug: string, actorSlug: string): string {
 	return `${traceSlug}.${actorSlug}.md`;
+}
+
+/** Segment start label used in rotated file names (`YYYY-MM`). */
+export function currentSegmentMonth(now: Date = new Date()): string {
+	return now.toISOString().slice(0, 7);
+}
+
+/** Build the segmented basename for a writer's file of a logical trace. */
+export function traceSegmentFileName(
+	segment: number,
+	startMonth: string,
+	actorSlug: string
+): string {
+	return `${String(segment).padStart(4, "0")}-${startMonth}.${actorSlug}.md`;
+}
+
+/** Build the segmented path for a writer's file of a logical trace. */
+export function traceSegmentPath(
+	tracesFolder: string,
+	traceSlug: string,
+	segment: number,
+	startMonth: string,
+	actorSlug: string
+): string {
+	const folder = tracesFolder ? tracesFolder + "/" : "";
+	return folder + traceSlug + "/" + traceSegmentFileName(segment, startMonth, actorSlug);
 }
 
 /** Parse `<trace-slug>.<actor-slug>.md` back into its slugs, or null. */
@@ -89,6 +119,50 @@ export function parseTraceFileName(
 	const [traceSlug, actorSlug] = parts;
 	if (!isValidSlug(traceSlug) || !isValidSlug(actorSlug)) return null;
 	return { traceSlug, actorSlug };
+}
+
+export interface TracePathInfo {
+	traceSlug: string;
+	actorSlug: string;
+	/** Null for legacy flat files. */
+	segment: number | null;
+	/** Null for legacy flat files. */
+	startMonth: string | null;
+	legacy: boolean;
+}
+
+/** Parse a trace path in either supported layout:
+ * `Traces/<trace>.<actor>.md` or
+ * `Traces/<trace>/<0001>-<YYYY-MM>.<actor>.md`. */
+export function parseTracePath(
+	path: string,
+	tracesFolder: string
+): TracePathInfo | null {
+	const prefix = tracesFolder ? tracesFolder.replace(/^\/+|\/+$/g, "") + "/" : "";
+	if (prefix && !path.startsWith(prefix)) return null;
+	const rest = prefix ? path.slice(prefix.length) : path;
+	const parts = rest.split("/");
+	if (parts.length === 1) {
+		const legacy = parseTraceFileName(parts[0]);
+		return legacy ? { ...legacy, segment: null, startMonth: null, legacy: true } : null;
+	}
+	if (parts.length !== 2) return null;
+	const [traceSlug, name] = parts;
+	if (!isValidSlug(traceSlug)) return null;
+	const match = /^(\d{4})-(\d{4}-\d{2})\.([a-z0-9]+(?:-[a-z0-9]+)*)\.md$/.exec(name);
+	if (!match) return null;
+	const segment = parseInt(match[1], 10);
+	const startMonth = match[2];
+	const actorSlug = match[3];
+	if (segment < 1 || !isValidSlug(actorSlug)) return null;
+	return { traceSlug, actorSlug, segment, startMonth, legacy: false };
+}
+
+/** Sort key for choosing the current writer file. Segmented files sort after
+ * legacy flat files; higher segment numbers are newer. */
+export function tracePathOrder(path: string, tracesFolder: string): number {
+	const info = parseTracePath(path, tracesFolder);
+	return info?.segment ?? 0;
 }
 
 /** Serialize the required tracev1 frontmatter block. */

@@ -32,7 +32,7 @@ export const REQUIRED_FRONTMATTER_KEYS = [
 export const FIELD_SEPARATOR = " | ";
 
 /** Reserved tags written by trace operations, not by users. */
-export const RESERVED_TAGS = ["#genesis", "#rebaseline", "#attest"] as const;
+export const RESERVED_TAGS = ["#genesis", "#rebaseline", "#attest", "#rotate"] as const;
 
 const SEQ_RE = /^(0|[1-9][0-9]*)$/;
 const TIMESTAMP_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
@@ -82,7 +82,9 @@ export interface Issue {
 
 export type FrontmatterValue = string | boolean;
 
-export type ConventionIssueCode = "unparseable-attestation";
+export type ConventionIssueCode =
+	| "unparseable-attestation"
+	| "unparseable-rotation";
 
 export interface ConventionIssue {
 	code: ConventionIssueCode;
@@ -102,6 +104,16 @@ export type AttestationPayload =
 
 export type AttestationParseResult =
 	| { ok: true; payload: AttestationPayload }
+	| { ok: false; message: string };
+
+export interface RotationPayload {
+	previous: string;
+	previousSeq: number;
+	previousHead: string;
+}
+
+export type RotationParseResult =
+	| { ok: true; payload: RotationPayload }
 	| { ok: false; message: string };
 
 export interface ParseResult {
@@ -195,7 +207,7 @@ export function isValidSlug(slug: string): boolean {
 	return slug.length > 0 && slug.length <= 60 && SLUG_RE.test(slug);
 }
 
-function encodeAttestationValue(value: string): string {
+function encodeKeyValue(value: string): string {
 	return encodeURIComponent(value)
 		.replace(/[!'()*]/g, (ch) =>
 			"%" + ch.charCodeAt(0).toString(16).toUpperCase()
@@ -203,11 +215,11 @@ function encodeAttestationValue(value: string): string {
 		.replace(/%2F/g, "/");
 }
 
-function decodeAttestationValue(value: string): string | null {
+function decodeKeyValue(value: string): string | null {
 	if (!ATTESTATION_VALUE_RE.test(value)) return null;
 	try {
 		const decoded = decodeURIComponent(value);
-		return encodeAttestationValue(decoded) === value ? decoded : null;
+		return encodeKeyValue(decoded) === value ? decoded : null;
 	} catch {
 		return null;
 	}
@@ -218,14 +230,14 @@ function decodeAttestationValue(value: string): string | null {
 export function formatAttestationPayload(payload: AttestationPayload): string {
 	if (payload.change === "rename") {
 		return [
-			`from=${encodeAttestationValue(payload.from)}`,
-			`to=${encodeAttestationValue(payload.to)}`,
+			`from=${encodeKeyValue(payload.from)}`,
+			`to=${encodeKeyValue(payload.to)}`,
 			"change=rename",
 			`sha256=${payload.sha256}`,
 		].join(" ");
 	}
 	const parts = [
-		`path=${encodeAttestationValue(payload.path)}`,
+		`path=${encodeKeyValue(payload.path)}`,
 		`change=${payload.change}`,
 	];
 	if (payload.change !== "delete") parts.push(`sha256=${payload.sha256}`);
@@ -234,25 +246,72 @@ export function formatAttestationPayload(payload: AttestationPayload): string {
 
 /** Parse a #attest key=value payload. Failure is a convention error, not a
  * trace grammar or chain failure. */
-export function parseAttestationPayload(text: string): AttestationParseResult {
+function parseKeyValuePayload(
+	text: string,
+	label: string
+): Map<string, string> | { ok: false; message: string } {
 	const fields = new Map<string, string>();
 	for (const token of text.split(" ")) {
 		if (token.length === 0) {
-			return { ok: false, message: "empty token in attestation payload" };
+			return { ok: false, message: `empty token in ${label} payload` };
 		}
 		const eq = token.indexOf("=");
 		if (eq <= 0 || eq === token.length - 1) {
-			return { ok: false, message: `attestation token "${token}" is not key=value` };
+			return { ok: false, message: `${label} token "${token}" is not key=value` };
 		}
 		const key = token.slice(0, eq);
 		if (!/^[a-z][a-z0-9_]*$/.test(key)) {
-			return { ok: false, message: `invalid attestation key "${key}"` };
+			return { ok: false, message: `invalid ${label} key "${key}"` };
 		}
 		if (fields.has(key)) {
-			return { ok: false, message: `duplicate attestation key "${key}"` };
+			return { ok: false, message: `duplicate ${label} key "${key}"` };
 		}
 		fields.set(key, token.slice(eq + 1));
 	}
+	return fields;
+}
+
+function requireEncodedValue(
+	fields: Map<string, string>,
+	key: string,
+	label: string
+): string | { ok: false; message: string } {
+	const raw = fields.get(key);
+	if (raw === undefined) return { ok: false, message: `missing ${label} key "${key}"` };
+	const decoded = decodeKeyValue(raw);
+	if (decoded === null) return { ok: false, message: `invalid ${label} value for "${key}"` };
+	return decoded;
+}
+
+function requireSha256(
+	fields: Map<string, string>,
+	key: string,
+	label: string
+): string | { ok: false; message: string } {
+	const sha = fields.get(key);
+	if (sha === undefined) return { ok: false, message: `missing ${label} key "${key}"` };
+	if (!SHA256_HEX_RE.test(sha)) {
+		return { ok: false, message: `${label} ${key} must be 64 lowercase hex characters` };
+	}
+	return sha;
+}
+
+function onlyKeys(
+	fields: Map<string, string>,
+	keys: string[],
+	label: string
+): { ok: false; message: string } | null {
+	for (const key of fields.keys()) {
+		if (!keys.includes(key)) {
+			return { ok: false, message: `unexpected ${label} key "${key}"` };
+		}
+	}
+	return null;
+}
+
+export function parseAttestationPayload(text: string): AttestationParseResult {
+	const fields = parseKeyValuePayload(text, "attestation");
+	if (!(fields instanceof Map)) return fields;
 
 	const change = fields.get("change");
 	if (
@@ -264,29 +323,6 @@ export function parseAttestationPayload(text: string): AttestationParseResult {
 		return { ok: false, message: "attestation change must be create, modify, delete, or rename" };
 	}
 
-	const requireValue = (key: string): string | AttestationParseResult => {
-		const raw = fields.get(key);
-		if (raw === undefined) return { ok: false, message: `missing attestation key "${key}"` };
-		const decoded = decodeAttestationValue(raw);
-		if (decoded === null) return { ok: false, message: `invalid attestation value for "${key}"` };
-		return decoded;
-	};
-	const requireSha = (): string | AttestationParseResult => {
-		const sha = fields.get("sha256");
-		if (sha === undefined) return { ok: false, message: "missing attestation key \"sha256\"" };
-		if (!SHA256_HEX_RE.test(sha)) {
-			return { ok: false, message: "attestation sha256 must be 64 lowercase hex characters" };
-		}
-		return sha;
-	};
-	const onlyKeys = (keys: string[]): AttestationParseResult | null => {
-		for (const key of fields.keys()) {
-			if (!keys.includes(key)) {
-				return { ok: false, message: `unexpected attestation key "${key}"` };
-			}
-		}
-		return null;
-	};
 	const canonical = (payload: AttestationPayload): AttestationParseResult =>
 		formatAttestationPayload(payload) === text
 			? { ok: true, payload }
@@ -296,26 +332,60 @@ export function parseAttestationPayload(text: string): AttestationParseResult {
 			};
 
 	if (change === "rename") {
-		const unexpected = onlyKeys(["from", "to", "change", "sha256"]);
+		const unexpected = onlyKeys(fields, ["from", "to", "change", "sha256"], "attestation");
 		if (unexpected) return unexpected;
-		const from = requireValue("from");
+		const from = requireEncodedValue(fields, "from", "attestation");
 		if (typeof from !== "string") return from;
-		const to = requireValue("to");
+		const to = requireEncodedValue(fields, "to", "attestation");
 		if (typeof to !== "string") return to;
-		const sha256 = requireSha();
+		const sha256 = requireSha256(fields, "sha256", "attestation");
 		if (typeof sha256 !== "string") return sha256;
 		return canonical({ change, from, to, sha256 });
 	}
 
 	const keys = change === "delete" ? ["path", "change"] : ["path", "change", "sha256"];
-	const unexpected = onlyKeys(keys);
+	const unexpected = onlyKeys(fields, keys, "attestation");
 	if (unexpected) return unexpected;
-	const path = requireValue("path");
+	const path = requireEncodedValue(fields, "path", "attestation");
 	if (typeof path !== "string") return path;
 	if (change === "delete") return canonical({ change, path });
-	const sha256 = requireSha();
+	const sha256 = requireSha256(fields, "sha256", "attestation");
 	if (typeof sha256 !== "string") return sha256;
 	return canonical({ change, path, sha256 });
+}
+
+export function formatRotationPayload(payload: RotationPayload): string {
+	return [
+		`previous=${encodeKeyValue(payload.previous)}`,
+		`previous_seq=${payload.previousSeq}`,
+		`previous_head=${payload.previousHead}`,
+	].join(" ");
+}
+
+export function parseRotationPayload(text: string): RotationParseResult {
+	const fields = parseKeyValuePayload(text, "rotation");
+	if (!(fields instanceof Map)) return fields;
+	const unexpected = onlyKeys(fields, ["previous", "previous_seq", "previous_head"], "rotation");
+	if (unexpected) return unexpected;
+	const previous = requireEncodedValue(fields, "previous", "rotation");
+	if (typeof previous !== "string") return previous;
+	const previousSeqRaw = fields.get("previous_seq");
+	if (!previousSeqRaw || !/^[1-9][0-9]*$/.test(previousSeqRaw)) {
+		return { ok: false, message: "rotation previous_seq must be a positive integer" };
+	}
+	const previousHead = requireSha256(fields, "previous_head", "rotation");
+	if (typeof previousHead !== "string") return previousHead;
+	const payload = {
+		previous,
+		previousSeq: parseInt(previousSeqRaw, 10),
+		previousHead,
+	};
+	return formatRotationPayload(payload) === text
+		? { ok: true, payload }
+		: {
+			ok: false,
+			message: "rotation payload must use canonical key order and encoding",
+		};
 }
 
 /** Escape entry text for storage: `\` `LF` `CR` `|` → `\\` `\n` `\r` `\|`. */
@@ -600,6 +670,16 @@ export function parseTrace(text: string): ParseResult {
 					line: entry.line,
 					seq: entry.seq,
 					message: attestation.message,
+				});
+			}
+		} else if (entry.tag === "#rotate") {
+			const rotation = parseRotationPayload(entry.text);
+			if (!rotation.ok) {
+				conventionIssues.push({
+					code: "unparseable-rotation",
+					line: entry.line,
+					seq: entry.seq,
+					message: rotation.message,
 				});
 			}
 		}

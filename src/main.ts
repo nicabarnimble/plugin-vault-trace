@@ -6,12 +6,16 @@ import {
 } from "./appendModal";
 import {
 	TraceFileMeta,
+	currentSegmentMonth,
+	formatRotationPayload,
 	metaFromFrontmatter,
 	parseEntryLine,
-	parseTraceFileName,
+	parseTracePath,
 	renderTemplateSegments,
 	slugify,
-	traceFileName,
+	tracePathOrder,
+	traceSegmentPath,
+	verifyTrace,
 } from "./format";
 import { TraceGuard, buildEditorGuard } from "./guard";
 import { AppendBlockedError, ChainState, ChainStore, TraceWriter } from "./hashchain";
@@ -40,11 +44,8 @@ export class TraceRegistry {
 	rebuild(): void {
 		const { app, settings } = this.plugin;
 		this.files.clear();
-		const folderPrefix = settings.tracesFolder + "/";
 		for (const file of app.vault.getMarkdownFiles()) {
-			const inFolder =
-				file.path.startsWith(folderPrefix) &&
-				parseTraceFileName(file.name) !== null;
+			const inFolder = parseTracePath(file.path, settings.tracesFolder) !== null;
 			const explicit = settings.explicitPaths.includes(file.path);
 			const fm = app.metadataCache.getFileCache(file)?.frontmatter;
 			const flagged = settings.useFrontmatterFlag && fm?.["trace"] === true;
@@ -91,18 +92,40 @@ export class TraceRegistry {
 		return [...byId.values()];
 	}
 
-	/** This device's writer file for a logical trace, wherever it lives. */
+	/** This device's current writer file for a logical trace, wherever it lives. */
 	ownFileFor(traceSlug: string, identity: Identity): string | null {
+		const candidates: string[] = [];
 		for (const [path, meta] of this.files) {
 			if (
 				meta &&
 				meta.traceSlug === traceSlug &&
 				meta.actorId === identity.actorId
 			) {
-				return path;
+				candidates.push(path);
 			}
 		}
-		return null;
+		candidates.sort((a, b) =>
+			tracePathOrder(b, this.plugin.settings.tracesFolder) -
+			tracePathOrder(a, this.plugin.settings.tracesFolder) ||
+			b.localeCompare(a)
+		);
+		return candidates[0] ?? null;
+	}
+
+	nextSegmentFor(traceSlug: string, actorSlug: string): number {
+		let max = 0;
+		for (const path of this.files.keys()) {
+			const info = parseTracePath(path, this.plugin.settings.tracesFolder);
+			if (
+				info &&
+				!info.legacy &&
+				info.traceSlug === traceSlug &&
+				info.actorSlug === actorSlug
+			) {
+				max = Math.max(max, info.segment ?? 0);
+			}
+		}
+		return max + 1;
 	}
 }
 
@@ -356,6 +379,55 @@ export default class TracePlugin extends Plugin {
 		return identity;
 	}
 
+	private nextSegmentPath(traceSlug: string, actorSlug: string): string {
+		return traceSegmentPath(
+			this.settings.tracesFolder,
+			traceSlug,
+			this.registry.nextSegmentFor(traceSlug, actorSlug),
+			currentSegmentMonth(),
+			actorSlug
+		);
+	}
+
+	private shouldRotate(file: TFile): boolean {
+		if (this.settings.rotationMode === "never") return false;
+		if (file.stat.size >= this.settings.rotationMaxBytes) return true;
+		const maxAgeMs = this.settings.rotationMaxAgeDays * 24 * 60 * 60 * 1000;
+		return Date.now() - file.stat.ctime >= maxAgeMs;
+	}
+
+	private async rotateTraceFile(file: TFile, meta: TraceFileMeta): Promise<TFile> {
+		const content = await this.app.vault.read(file);
+		const result = await verifyTrace(content);
+		if (!result.ok || result.headHash === null) {
+			throw new AppendBlockedError(
+				`"${file.path}" must verify before rotation. Run "Verify integrity".`
+			);
+		}
+		const last = result.entries[result.entries.length - 1];
+		if (!last) {
+			throw new AppendBlockedError(`"${file.path}" has no entries to rotate from.`);
+		}
+		const path = this.nextSegmentPath(meta.traceSlug, meta.actorSlug);
+		const rotated = await this.writer.createTraceFile(this.settings.tracesFolder, meta, {
+			path,
+			initialFields: {
+				seq: 1,
+				timestamp: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
+				actor: meta.actorName,
+				tag: "#rotate",
+				text: formatRotationPayload({
+					previous: file.path,
+					previousSeq: last.seq,
+					previousHead: result.headHash,
+				}),
+			},
+		});
+		this.registry.rebuild();
+		new Notice(`Rotated trace segment to "${rotated.path}".`);
+		return rotated;
+	}
+
 	/** Append through the modal path; creates this device's writer file for
 	 * the logical trace when it does not exist yet. */
 	async appendToTrace(
@@ -385,24 +457,26 @@ export default class TracePlugin extends Plugin {
 					);
 					return;
 				}
-				await this.writer.createTraceFile(this.settings.tracesFolder, {
-					traceName,
-					traceSlug,
-					actorName: identity.actorName,
-					actorSlug: identity.actorSlug,
-					actorId: identity.actorId,
-				});
+				const created = await this.writer.createTraceFile(
+					this.settings.tracesFolder,
+					{
+						traceName,
+						traceSlug,
+						actorName: identity.actorName,
+						actorSlug: identity.actorSlug,
+						actorId: identity.actorId,
+					},
+					{ path: this.nextSegmentPath(traceSlug, identity.actorSlug) }
+				);
 				this.registry.rebuild();
-				path =
-					this.settings.tracesFolder +
-					"/" +
-					traceFileName(traceSlug, identity.actorSlug);
+				path = created.path;
 			}
-			const file = this.app.vault.getAbstractFileByPath(path);
-			if (!(file instanceof TFile)) {
+			const found = this.app.vault.getAbstractFileByPath(path);
+			if (!(found instanceof TFile)) {
 				new Notice(`Trace file "${path}" is missing.`);
 				return;
 			}
+			let file = found;
 			const meta = this.registry.get(path) ?? {
 				traceName,
 				traceSlug,
@@ -410,6 +484,9 @@ export default class TracePlugin extends Plugin {
 				actorSlug: identity.actorSlug,
 				actorId: identity.actorId,
 			};
+			if (this.shouldRotate(file)) {
+				file = await this.rotateTraceFile(file, meta);
+			}
 			const appended = await this.writer.appendEntry(file, meta, {
 				tag,
 				text,
@@ -449,7 +526,8 @@ export default class TracePlugin extends Plugin {
 					actorName: identity.actorName,
 					actorSlug: identity.actorSlug,
 					actorId: identity.actorId,
-				}
+				},
+				{ path: this.nextSegmentPath(slug, identity.actorSlug) }
 			);
 			this.registry.rebuild();
 			this.lastUsedTrace = slug;

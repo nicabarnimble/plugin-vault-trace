@@ -16,16 +16,36 @@ Trace files are plain Markdown. They are designed to be:
 ## 1. One writer per file
 
 A **logical trace** (a named timeline, e.g. "Project log") is physically
-stored as **one file per writer (actor)**. Each file contains a single hash
-chain written by exactly one actor. This exists because sync systems
+stored as **one active file per writer (actor)**. Each file contains a single
+hash chain written by exactly one actor. This exists because sync systems
 (including Obsidian Sync) auto-merge concurrent edits to a shared Markdown
 file, which would fork a shared hash chain during normal use. With one writer
-per file, no two devices ever produce competing edits to the same file.
+per active file, no two devices ever produce competing edits to the same file.
+Long-running or high-volume writer files may rotate into multiple segments;
+each segment remains a one-writer hash chain.
 
 ### 1.1 File naming
 
+Default segmented layout:
+
 ```
-<trace-slug>.<actor-slug>.md
+Traces/<trace-slug>/<segment>-<start-month>.<actor-slug>.md
+```
+
+Example:
+
+```
+Traces/project-log/0001-2026-07.laptop.md
+```
+
+- `segment` is a four-digit per-actor segment number, starting at `0001`.
+- `start-month` is the UTC month when the segment was created, `YYYY-MM`.
+- Sequence numbers reset per file segment.
+
+Legacy flat files are also valid and continue to verify:
+
+```
+Traces/<trace-slug>.<actor-slug>.md
 ```
 
 Both slugs match:
@@ -53,7 +73,7 @@ A trace file is UTF-8 text with `\n` line endings:
 
 ```
 frontmatter
-entry-line 1  (the genesis entry, seq = 1)
+entry-line 1  (the genesis or rotation entry, seq = 1)
 entry-line 2
 ...
 entry-line N
@@ -65,6 +85,8 @@ entry-line N
   Any other content makes the file invalid.
 - The file **should** end with a single trailing `\n`.
 - Entry lines appear in sequence order; the first entry has `seq = 1`.
+  The first segment for a writer starts with `#genesis`; later rotated
+  segments start with `#rotate` (section 4.3).
 
 ## 3. Frontmatter
 
@@ -125,8 +147,8 @@ Field definitions:
    entry has no tag, the field is omitted entirely (five fields total). Field
    count disambiguates: raw `|` never occurs inside any field value, so a
    compliant line splits on `" | "` into exactly 5 or 6 fields. The tags
-   `#genesis`, `#rebaseline`, and `#attest` are reserved for protocol-owned
-   entries and cannot be redefined as user tags.
+   `#genesis`, `#rebaseline`, `#attest`, and `#rotate` are reserved for
+   protocol-owned entries and cannot be redefined as user tags.
 5. **`text`** — the entry body, non-empty, single line, escaped per
    section 4.1.
 6. **`hash8`** — `#` followed by the first 8 lowercase hex characters of the
@@ -188,6 +210,36 @@ newer attestation exists and should be followed, or the file changed without an
 attestation. That undocumented change is a first-class signal; it is not an
 error in the trace. Rename and delete attestations allow references to move or
 end deliberately.
+
+### 4.3 Rotation entries (`#rotate` convention)
+
+`#rotate` is a protocol-owned tag for the first entry in a rotated segment. It
+links the new segment back to the verified head of the previous segment. It does
+not change the hash-chain construction: the new file is its own chain whose
+entry 1 hashes against `GENESIS`.
+
+The text payload is canonical `key=value` form, using the same percent-encoding
+rules as attestations:
+
+```
+previous=<path> previous_seq=<positive-integer> previous_head=<64-lowercase-hex>
+```
+
+Example:
+
+```
+previous=Traces/project-log/0001-2026-07.laptop.md previous_seq=812 previous_head=9f2c000000000000000000000000000000000000000000000000000000000000
+```
+
+External consumers verify continuity by:
+
+1. verifying the previous segment,
+2. confirming its last sequence equals `previous_seq`,
+3. confirming its full head hash equals `previous_head`, and
+4. verifying the new segment normally.
+
+A missing or malformed rotation payload is a convention issue, not an entry
+syntax or hash-chain failure.
 
 ## 5. Hash chain
 

@@ -5,8 +5,10 @@ import {
 	GENESIS,
 	computeEntryHash,
 	formatEntryLine,
+	parseTracePath,
 	renderTemplate,
 	slugify,
+	traceSegmentPath,
 	validateTemplate,
 	type EntryFields,
 } from "../src/format";
@@ -77,6 +79,24 @@ describe("format and identity helpers", () => {
 				{ actorSlug: "my-laptop-main", actorName: "My Laptop: Main" },
 			])
 		).toContain("already taken");
+	});
+
+	it("parses legacy and segmented trace file paths", () => {
+		expect(parseTracePath("Traces/project-log.laptop.md", "Traces")).toMatchObject({
+			traceSlug: "project-log",
+			actorSlug: "laptop",
+			segment: null,
+			legacy: true,
+		});
+		const segmented = traceSegmentPath("Traces", "project-log", 2, "2026-07", "laptop");
+		expect(segmented).toBe("Traces/project-log/0002-2026-07.laptop.md");
+		expect(parseTracePath(segmented, "Traces")).toMatchObject({
+			traceSlug: "project-log",
+			actorSlug: "laptop",
+			segment: 2,
+			startMonth: "2026-07",
+			legacy: false,
+		});
 	});
 
 	it("creates an automatic device identity without requiring a custom name", () => {

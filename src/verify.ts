@@ -10,7 +10,7 @@ import {
 	GENESIS,
 	EntryFields,
 } from "../reference/parser";
-import { TraceFileMeta, nowTimestamp } from "./format";
+import { TraceFileMeta, nowTimestamp, parseTracePath, traceFileName } from "./format";
 import type TracePlugin from "./main";
 
 export type StateCheck =
@@ -154,11 +154,22 @@ export async function verifyAllTraces(
 			}
 		}
 		for (const r of group) {
-			const expectedName = r.meta
-				? `${r.meta.traceSlug}.${r.meta.actorSlug}.md`
-				: null;
+			if (!r.meta) continue;
+			const info = parseTracePath(r.path, plugin.settings.tracesFolder);
+			if (info) {
+				if (
+					info.traceSlug !== r.meta.traceSlug ||
+					info.actorSlug !== r.meta.actorSlug
+				) {
+					logical.push(
+						`File "${r.path}" does not match its trace or actor frontmatter.`
+					);
+				}
+				continue;
+			}
 			const basename = r.path.split("/").pop();
-			if (expectedName && basename !== expectedName) {
+			const expectedName = traceFileName(r.meta.traceSlug, r.meta.actorSlug);
+			if (basename !== expectedName) {
 				logical.push(
 					`File "${r.path}" should be named "${expectedName}" to match its frontmatter.`
 				);

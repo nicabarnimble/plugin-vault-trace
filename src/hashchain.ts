@@ -100,6 +100,13 @@ export interface AppendedEntry {
 	line: string;
 }
 
+export interface CreateTraceFileOptions {
+	/** Full vault path. Defaults to the legacy flat path. */
+	path?: string;
+	/** First entry fields. Defaults to a #genesis entry. */
+	initialFields?: EntryFields;
+}
+
 /**
  * The only write path for trace files. Serializes operations per file,
  * computes seq + chain hash, appends via Vault.append, and keeps the chain
@@ -126,15 +133,21 @@ export class TraceWriter {
 	}
 
 	private async ensureFolder(folderPath: string): Promise<void> {
-		if (folderPath === "" || folderPath === "/") return;
-		const existing = this.vault.getAbstractFileByPath(folderPath);
-		if (existing instanceof TFolder) return;
-		if (existing !== null) {
-			throw new AppendBlockedError(
-				`"${folderPath}" exists but is not a folder`
-			);
+		const normalized = folderPath.replace(/^\/+|\/+$/g, "");
+		if (normalized === "") return;
+		const parts = normalized.split("/");
+		let current = "";
+		for (const part of parts) {
+			current = current ? current + "/" + part : part;
+			const existing = this.vault.getAbstractFileByPath(current);
+			if (existing instanceof TFolder) continue;
+			if (existing !== null) {
+				throw new AppendBlockedError(
+					`"${current}" exists but is not a folder`
+				);
+			}
+			await this.vault.createFolder(current);
 		}
-		await this.vault.createFolder(folderPath);
 	}
 
 	/**
@@ -143,17 +156,18 @@ export class TraceWriter {
 	 */
 	async createTraceFile(
 		folderPath: string,
-		meta: TraceFileMeta
+		meta: TraceFileMeta,
+		options: CreateTraceFileOptions = {}
 	): Promise<TFile> {
-		const path =
+		const path = options.path ??
 			(folderPath ? folderPath + "/" : "") +
 			traceFileName(meta.traceSlug, meta.actorSlug);
 		return this.enqueue(path, async () => {
 			if (this.vault.getAbstractFileByPath(path) !== null) {
 				throw new AppendBlockedError(`"${path}" already exists`);
 			}
-			await this.ensureFolder(folderPath);
-			const fields = genesisFields(meta, nowTimestamp());
+			await this.ensureFolder(path.split("/").slice(0, -1).join("/"));
+			const fields = options.initialFields ?? genesisFields(meta, nowTimestamp());
 			const fullHash = await computeEntryHash(
 				"0".repeat(64),
 				fields

@@ -49,13 +49,21 @@ A **trace** is a logical timeline, such as “Project log”.
 
 A **writer** or **actor** is one device, human environment, script, or agent that writes entries.
 
-A **writer file** is the physical Markdown file for one actor in one trace:
+A **writer file** is the physical Markdown segment for one actor in one trace:
 
 ```text
-Traces/<trace-slug>.<actor-slug>.md
+Traces/<trace-slug>/<segment>-<start-month>.<actor-slug>.md
 ```
 
-A **chain** is the per-file sequence of entries and hashes. Sequence numbers are total order within one writer file.
+Example:
+
+```text
+Traces/project-log/0001-2026-07.laptop.md
+```
+
+A **segment** is one physical file in that actor’s chain history. Trace starts a new segment automatically when the current file gets too large or too old. Legacy flat files like `Traces/project-log.laptop.md` are still supported.
+
+A **chain** is the per-file sequence of entries and hashes. Sequence numbers are total order within one writer file segment.
 
 A **merged timeline** combines writer files for the same logical trace by timestamp. This cross-writer order is approximate because device clocks can drift.
 
@@ -67,15 +75,15 @@ A **trusted head** is the full `{seq, hash}` stored outside a writer’s control
 
 Obsidian Sync can auto-merge concurrent Markdown edits. If multiple devices wrote the same trace file, normal sync behavior could splice competing edits into one file and fork the hash chain.
 
-Trace avoids this by making each actor write only its own file:
+Trace avoids this by making each actor write only its own active file segment:
 
 ```text
-Traces/project-log.laptop.md
-Traces/project-log.phone.md
-Traces/project-log.agent-a.md
+Traces/project-log/0001-2026-07.laptop.md
+Traces/project-log/0001-2026-07.phone.md
+Traces/project-log/0001-2026-07.agent-a.md
 ```
 
-Each file has independent sequence numbers and a separate hash chain. Verification remains meaningful even when multiple devices or agents contribute to the same logical timeline.
+Each file segment has independent sequence numbers and a separate hash chain. Verification remains meaningful even when multiple devices or agents contribute to the same logical timeline.
 
 Single-file multi-writer traces are intentionally out of scope.
 
@@ -121,10 +129,13 @@ If local identity is missing but trace files already exist, Trace asks whether t
 - **This device’s name** — friendly actor name for entries from this device.
 - **Enforcement mode** — `enforce` reverts non-append changes to own files; `warn` only notifies.
 - **Read-only guard** — CodeMirror protection for committed entries.
+- **Rotation** — `auto` starts a new file segment when the active writer file reaches the size or age limit; `never` keeps one file per writer.
+- **Max segment size** — auto-rotation size limit. Default: 1 megabyte.
+- **Max segment age** — auto-rotation age limit. Default: 365 days.
 - **Display template** — reading-view decoration using `{{seq}}`, `{{timestamp}}`, `{{actor}}`, `{{tag}}`, `{{text}}`, `{{hash}}`.
 - **Tags** — user tag vocabulary offered by the append modal.
 
-Reserved protocol tags are `#genesis`, `#rebaseline`, and `#attest`. User tags cannot redefine them.
+Reserved protocol tags are `#genesis`, `#rebaseline`, `#attest`, and `#rotate`. User tags cannot redefine them.
 
 ## Entry format and verification
 
@@ -140,6 +151,23 @@ At a high level, each entry stores:
 6. short hash anchor.
 
 The hash input is the previous full hash plus the canonical entry serialization. The stored anchor is the first 8 lowercase hex characters of the full SHA-256. Verifiers recompute the full chain from the start of the file.
+
+## File size and rotation
+
+Trace uses segmented file names by default:
+
+```text
+Traces/<trace-slug>/<segment>-<start-month>.<actor-slug>.md
+```
+
+The default rotation policy is **auto**:
+
+- rotate when the active writer file reaches 1 megabyte, or
+- rotate when the active writer file is 365 days old.
+
+Light users may keep one segment for a year. High-volume agents may rotate many times in the same month. Rotating does not delete history; it creates a new segment whose first entry is `#rotate` and points to the previous segment’s path, sequence, and full head hash.
+
+Retention is separate from rotation. Trace keeps old segments forever by default.
 
 ## Attestations for vault files
 
@@ -201,7 +229,7 @@ import {
   verifyTrace,
 } from "./reference/parser.ts";
 
-const text = await readFile("Traces/project-log.agent-a.md", "utf8");
+const text = await readFile("Traces/project-log/0001-2026-07.agent-a.md", "utf8");
 const result = await verifyTrace(text);
 if (!result.ok) throw new Error(result.issues[0]?.message ?? "Invalid trace");
 
@@ -226,14 +254,14 @@ const attestedText = await appendEntry(nextText, {
   tag: "#attest",
   text: attestation,
 });
-await writeFile("Traces/project-log.agent-a.md", attestedText);
+await writeFile("Traces/project-log/0001-2026-07.agent-a.md", attestedText);
 
 const progression = await verifyProgression(oldHead, attestedText);
 if (!progression.ok) throw new Error(progression.status);
 
 const merged = mergeTimelines([
   { actor: "agent-a", text: attestedText },
-  { actor: "human-laptop", text: await readFile("Traces/project-log.laptop.md", "utf8") },
+  { actor: "human-laptop", text: await readFile("Traces/project-log/0001-2026-07.laptop.md", "utf8") },
 ]);
 console.log(merged.timeline.map((item) => `${item.entry.timestamp} ${item.actor} ${item.anchor}`));
 ```

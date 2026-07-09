@@ -48,7 +48,7 @@ var REQUIRED_FRONTMATTER_KEYS = [
   "actor_id"
 ];
 var FIELD_SEPARATOR = " | ";
-var RESERVED_TAGS = ["#genesis", "#rebaseline", "#attest"];
+var RESERVED_TAGS = ["#genesis", "#rebaseline", "#attest", "#rotate"];
 var SEQ_RE = /^(0|[1-9][0-9]*)$/;
 var TIMESTAMP_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
 var ACTOR_RE = /^[^|\\#\r\n ][^|\\\r\n]*$/;
@@ -68,17 +68,17 @@ function slugify(name) {
 function isValidSlug(slug) {
   return slug.length > 0 && slug.length <= 60 && SLUG_RE.test(slug);
 }
-function encodeAttestationValue(value) {
+function encodeKeyValue(value) {
   return encodeURIComponent(value).replace(
     /[!'()*]/g,
     (ch) => "%" + ch.charCodeAt(0).toString(16).toUpperCase()
   ).replace(/%2F/g, "/");
 }
-function decodeAttestationValue(value) {
+function decodeKeyValue(value) {
   if (!ATTESTATION_VALUE_RE.test(value)) return null;
   try {
     const decoded = decodeURIComponent(value);
-    return encodeAttestationValue(decoded) === value ? decoded : null;
+    return encodeKeyValue(decoded) === value ? decoded : null;
   } catch {
     return null;
   }
@@ -86,89 +86,124 @@ function decodeAttestationValue(value) {
 function formatAttestationPayload(payload) {
   if (payload.change === "rename") {
     return [
-      `from=${encodeAttestationValue(payload.from)}`,
-      `to=${encodeAttestationValue(payload.to)}`,
+      `from=${encodeKeyValue(payload.from)}`,
+      `to=${encodeKeyValue(payload.to)}`,
       "change=rename",
       `sha256=${payload.sha256}`
     ].join(" ");
   }
   const parts = [
-    `path=${encodeAttestationValue(payload.path)}`,
+    `path=${encodeKeyValue(payload.path)}`,
     `change=${payload.change}`
   ];
   if (payload.change !== "delete") parts.push(`sha256=${payload.sha256}`);
   return parts.join(" ");
 }
-function parseAttestationPayload(text) {
+function parseKeyValuePayload(text, label) {
   const fields = /* @__PURE__ */ new Map();
   for (const token of text.split(" ")) {
     if (token.length === 0) {
-      return { ok: false, message: "empty token in attestation payload" };
+      return { ok: false, message: `empty token in ${label} payload` };
     }
     const eq = token.indexOf("=");
     if (eq <= 0 || eq === token.length - 1) {
-      return { ok: false, message: `attestation token "${token}" is not key=value` };
+      return { ok: false, message: `${label} token "${token}" is not key=value` };
     }
     const key = token.slice(0, eq);
     if (!/^[a-z][a-z0-9_]*$/.test(key)) {
-      return { ok: false, message: `invalid attestation key "${key}"` };
+      return { ok: false, message: `invalid ${label} key "${key}"` };
     }
     if (fields.has(key)) {
-      return { ok: false, message: `duplicate attestation key "${key}"` };
+      return { ok: false, message: `duplicate ${label} key "${key}"` };
     }
     fields.set(key, token.slice(eq + 1));
   }
+  return fields;
+}
+function requireEncodedValue(fields, key, label) {
+  const raw = fields.get(key);
+  if (raw === void 0) return { ok: false, message: `missing ${label} key "${key}"` };
+  const decoded = decodeKeyValue(raw);
+  if (decoded === null) return { ok: false, message: `invalid ${label} value for "${key}"` };
+  return decoded;
+}
+function requireSha256(fields, key, label) {
+  const sha = fields.get(key);
+  if (sha === void 0) return { ok: false, message: `missing ${label} key "${key}"` };
+  if (!SHA256_HEX_RE.test(sha)) {
+    return { ok: false, message: `${label} ${key} must be 64 lowercase hex characters` };
+  }
+  return sha;
+}
+function onlyKeys(fields, keys, label) {
+  for (const key of fields.keys()) {
+    if (!keys.includes(key)) {
+      return { ok: false, message: `unexpected ${label} key "${key}"` };
+    }
+  }
+  return null;
+}
+function parseAttestationPayload(text) {
+  const fields = parseKeyValuePayload(text, "attestation");
+  if (!(fields instanceof Map)) return fields;
   const change = fields.get("change");
   if (change !== "create" && change !== "modify" && change !== "delete" && change !== "rename") {
     return { ok: false, message: "attestation change must be create, modify, delete, or rename" };
   }
-  const requireValue = (key) => {
-    const raw = fields.get(key);
-    if (raw === void 0) return { ok: false, message: `missing attestation key "${key}"` };
-    const decoded = decodeAttestationValue(raw);
-    if (decoded === null) return { ok: false, message: `invalid attestation value for "${key}"` };
-    return decoded;
-  };
-  const requireSha = () => {
-    const sha = fields.get("sha256");
-    if (sha === void 0) return { ok: false, message: 'missing attestation key "sha256"' };
-    if (!SHA256_HEX_RE.test(sha)) {
-      return { ok: false, message: "attestation sha256 must be 64 lowercase hex characters" };
-    }
-    return sha;
-  };
-  const onlyKeys = (keys2) => {
-    for (const key of fields.keys()) {
-      if (!keys2.includes(key)) {
-        return { ok: false, message: `unexpected attestation key "${key}"` };
-      }
-    }
-    return null;
-  };
   const canonical = (payload) => formatAttestationPayload(payload) === text ? { ok: true, payload } : {
     ok: false,
     message: "attestation payload must use canonical key order and encoding"
   };
   if (change === "rename") {
-    const unexpected2 = onlyKeys(["from", "to", "change", "sha256"]);
+    const unexpected2 = onlyKeys(fields, ["from", "to", "change", "sha256"], "attestation");
     if (unexpected2) return unexpected2;
-    const from = requireValue("from");
+    const from = requireEncodedValue(fields, "from", "attestation");
     if (typeof from !== "string") return from;
-    const to = requireValue("to");
+    const to = requireEncodedValue(fields, "to", "attestation");
     if (typeof to !== "string") return to;
-    const sha2562 = requireSha();
+    const sha2562 = requireSha256(fields, "sha256", "attestation");
     if (typeof sha2562 !== "string") return sha2562;
     return canonical({ change, from, to, sha256: sha2562 });
   }
   const keys = change === "delete" ? ["path", "change"] : ["path", "change", "sha256"];
-  const unexpected = onlyKeys(keys);
+  const unexpected = onlyKeys(fields, keys, "attestation");
   if (unexpected) return unexpected;
-  const path = requireValue("path");
+  const path = requireEncodedValue(fields, "path", "attestation");
   if (typeof path !== "string") return path;
   if (change === "delete") return canonical({ change, path });
-  const sha256 = requireSha();
+  const sha256 = requireSha256(fields, "sha256", "attestation");
   if (typeof sha256 !== "string") return sha256;
   return canonical({ change, path, sha256 });
+}
+function formatRotationPayload(payload) {
+  return [
+    `previous=${encodeKeyValue(payload.previous)}`,
+    `previous_seq=${payload.previousSeq}`,
+    `previous_head=${payload.previousHead}`
+  ].join(" ");
+}
+function parseRotationPayload(text) {
+  const fields = parseKeyValuePayload(text, "rotation");
+  if (!(fields instanceof Map)) return fields;
+  const unexpected = onlyKeys(fields, ["previous", "previous_seq", "previous_head"], "rotation");
+  if (unexpected) return unexpected;
+  const previous = requireEncodedValue(fields, "previous", "rotation");
+  if (typeof previous !== "string") return previous;
+  const previousSeqRaw = fields.get("previous_seq");
+  if (!previousSeqRaw || !/^[1-9][0-9]*$/.test(previousSeqRaw)) {
+    return { ok: false, message: "rotation previous_seq must be a positive integer" };
+  }
+  const previousHead = requireSha256(fields, "previous_head", "rotation");
+  if (typeof previousHead !== "string") return previousHead;
+  const payload = {
+    previous,
+    previousSeq: parseInt(previousSeqRaw, 10),
+    previousHead
+  };
+  return formatRotationPayload(payload) === text ? { ok: true, payload } : {
+    ok: false,
+    message: "rotation payload must use canonical key order and encoding"
+  };
 }
 function escapeText(text) {
   let out = "";
@@ -400,6 +435,16 @@ function parseTrace(text) {
           message: attestation.message
         });
       }
+    } else if (entry.tag === "#rotate") {
+      const rotation = parseRotationPayload(entry.text);
+      if (!rotation.ok) {
+        conventionIssues.push({
+          code: "unparseable-rotation",
+          line: entry.line,
+          seq: entry.seq,
+          message: rotation.message
+        });
+      }
     }
   }
   return {
@@ -512,12 +557,46 @@ function nowTimestamp(now = /* @__PURE__ */ new Date()) {
 function traceFileName(traceSlug, actorSlug) {
   return `${traceSlug}.${actorSlug}.md`;
 }
+function currentSegmentMonth(now = /* @__PURE__ */ new Date()) {
+  return now.toISOString().slice(0, 7);
+}
+function traceSegmentFileName(segment, startMonth, actorSlug) {
+  return `${String(segment).padStart(4, "0")}-${startMonth}.${actorSlug}.md`;
+}
+function traceSegmentPath(tracesFolder, traceSlug, segment, startMonth, actorSlug) {
+  const folder = tracesFolder ? tracesFolder + "/" : "";
+  return folder + traceSlug + "/" + traceSegmentFileName(segment, startMonth, actorSlug);
+}
 function parseTraceFileName(name) {
   const parts = name.split(".");
   if (parts.length !== 3 || parts[2] !== "md") return null;
   const [traceSlug, actorSlug] = parts;
   if (!isValidSlug(traceSlug) || !isValidSlug(actorSlug)) return null;
   return { traceSlug, actorSlug };
+}
+function parseTracePath(path, tracesFolder) {
+  const prefix = tracesFolder ? tracesFolder.replace(/^\/+|\/+$/g, "") + "/" : "";
+  if (prefix && !path.startsWith(prefix)) return null;
+  const rest = prefix ? path.slice(prefix.length) : path;
+  const parts = rest.split("/");
+  if (parts.length === 1) {
+    const legacy = parseTraceFileName(parts[0]);
+    return legacy ? { ...legacy, segment: null, startMonth: null, legacy: true } : null;
+  }
+  if (parts.length !== 2) return null;
+  const [traceSlug, name] = parts;
+  if (!isValidSlug(traceSlug)) return null;
+  const match = /^(\d{4})-(\d{4}-\d{2})\.([a-z0-9]+(?:-[a-z0-9]+)*)\.md$/.exec(name);
+  if (!match) return null;
+  const segment = parseInt(match[1], 10);
+  const startMonth = match[2];
+  const actorSlug = match[3];
+  if (segment < 1 || !isValidSlug(actorSlug)) return null;
+  return { traceSlug, actorSlug, segment, startMonth, legacy: false };
+}
+function tracePathOrder(path, tracesFolder) {
+  const info = parseTracePath(path, tracesFolder);
+  return info?.segment ?? 0;
 }
 function buildFrontmatter(meta) {
   const pairs = [
@@ -1274,28 +1353,34 @@ var TraceWriter = class {
     return next;
   }
   async ensureFolder(folderPath) {
-    if (folderPath === "" || folderPath === "/") return;
-    const existing = this.vault.getAbstractFileByPath(folderPath);
-    if (existing instanceof import_obsidian4.TFolder) return;
-    if (existing !== null) {
-      throw new AppendBlockedError(
-        `"${folderPath}" exists but is not a folder`
-      );
+    const normalized = folderPath.replace(/^\/+|\/+$/g, "");
+    if (normalized === "") return;
+    const parts = normalized.split("/");
+    let current = "";
+    for (const part of parts) {
+      current = current ? current + "/" + part : part;
+      const existing = this.vault.getAbstractFileByPath(current);
+      if (existing instanceof import_obsidian4.TFolder) continue;
+      if (existing !== null) {
+        throw new AppendBlockedError(
+          `"${current}" exists but is not a folder`
+        );
+      }
+      await this.vault.createFolder(current);
     }
-    await this.vault.createFolder(folderPath);
   }
   /**
    * Create a new writer file for a logical trace: frontmatter plus the
    * genesis entry (seq 1). Fails if the file already exists.
    */
-  async createTraceFile(folderPath, meta) {
-    const path = (folderPath ? folderPath + "/" : "") + traceFileName(meta.traceSlug, meta.actorSlug);
+  async createTraceFile(folderPath, meta, options = {}) {
+    const path = options.path ?? (folderPath ? folderPath + "/" : "") + traceFileName(meta.traceSlug, meta.actorSlug);
     return this.enqueue(path, async () => {
       if (this.vault.getAbstractFileByPath(path) !== null) {
         throw new AppendBlockedError(`"${path}" already exists`);
       }
-      await this.ensureFolder(folderPath);
-      const fields = genesisFields(meta, nowTimestamp());
+      await this.ensureFolder(path.split("/").slice(0, -1).join("/"));
+      const fields = options.initialFields ?? genesisFields(meta, nowTimestamp());
       const fullHash = await computeEntryHash(
         "0".repeat(64),
         fields
@@ -1570,7 +1655,10 @@ var DEFAULT_SETTINGS = {
   enforcementMode: "enforce",
   displayTemplate: DEFAULT_TEMPLATE,
   tagSet: ["note", "agent", "decision", "milestone"],
-  readOnlyGuard: true
+  readOnlyGuard: true,
+  rotationMode: "auto",
+  rotationMaxBytes: 1e6,
+  rotationMaxAgeDays: 365
 };
 var TAG_TOKEN_RE = /^[a-z0-9][a-z0-9_-]*$/;
 var TraceSettingTab = class extends import_obsidian6.PluginSettingTab {
@@ -1592,6 +1680,36 @@ var TraceSettingTab = class extends import_obsidian6.PluginSettingTab {
         this.plugin.settings.tracesFolder = value.replace(/^\/+|\/+$/g, "") || "Traces";
         await this.plugin.saveSettings();
         this.plugin.registry.rebuild();
+      })
+    );
+    new import_obsidian6.Setting(containerEl).setName("Rotation").setDesc(
+      "Auto starts a new segment when this writer's file reaches the size or age limit. Never keeps one file per writer."
+    ).addDropdown(
+      (dropdown) => dropdown.addOption("auto", "Auto").addOption("never", "Never").setValue(this.plugin.settings.rotationMode).onChange(async (value) => {
+        this.plugin.settings.rotationMode = value === "never" ? "never" : "auto";
+        await this.plugin.saveSettings();
+      })
+    );
+    new import_obsidian6.Setting(containerEl).setName("Max segment size").setDesc("Auto-rotation size limit in megabytes. Default: 1 megabyte.").addText(
+      (text) => text.setPlaceholder("1").setValue(String(this.plugin.settings.rotationMaxBytes / 1e6)).onChange(async (value) => {
+        const mb = Number(value.trim());
+        if (!Number.isFinite(mb) || mb <= 0) {
+          new import_obsidian6.Notice("Max segment size must be a positive number.");
+          return;
+        }
+        this.plugin.settings.rotationMaxBytes = Math.round(mb * 1e6);
+        await this.plugin.saveSettings();
+      })
+    );
+    new import_obsidian6.Setting(containerEl).setName("Max segment age").setDesc("Auto-rotation age limit in days. Default: 365 days.").addText(
+      (text) => text.setPlaceholder("365").setValue(String(this.plugin.settings.rotationMaxAgeDays)).onChange(async (value) => {
+        const days = Number(value.trim());
+        if (!Number.isFinite(days) || days <= 0) {
+          new import_obsidian6.Notice("Max segment age must be a positive number of days.");
+          return;
+        }
+        this.plugin.settings.rotationMaxAgeDays = Math.round(days);
+        await this.plugin.saveSettings();
       })
     );
     new import_obsidian6.Setting(containerEl).setName("Additional trace paths").setDesc("Files outside the folder to treat as traces, one path per line.").addTextArea(
@@ -1754,9 +1872,19 @@ async function verifyAllTraces(plugin) {
       }
     }
     for (const r of group) {
-      const expectedName = r.meta ? `${r.meta.traceSlug}.${r.meta.actorSlug}.md` : null;
+      if (!r.meta) continue;
+      const info = parseTracePath(r.path, plugin.settings.tracesFolder);
+      if (info) {
+        if (info.traceSlug !== r.meta.traceSlug || info.actorSlug !== r.meta.actorSlug) {
+          logical.push(
+            `File "${r.path}" does not match its trace or actor frontmatter.`
+          );
+        }
+        continue;
+      }
       const basename = r.path.split("/").pop();
-      if (expectedName && basename !== expectedName) {
+      const expectedName = traceFileName(r.meta.traceSlug, r.meta.actorSlug);
+      if (basename !== expectedName) {
         logical.push(
           `File "${r.path}" should be named "${expectedName}" to match its frontmatter.`
         );
@@ -1972,9 +2100,8 @@ var TraceRegistry = class {
   rebuild() {
     const { app, settings } = this.plugin;
     this.files.clear();
-    const folderPrefix = settings.tracesFolder + "/";
     for (const file of app.vault.getMarkdownFiles()) {
-      const inFolder = file.path.startsWith(folderPrefix) && parseTraceFileName(file.name) !== null;
+      const inFolder = parseTracePath(file.path, settings.tracesFolder) !== null;
       const explicit = settings.explicitPaths.includes(file.path);
       const fm = app.metadataCache.getFileCache(file)?.frontmatter;
       const flagged = settings.useFrontmatterFlag && fm?.["trace"] === true;
@@ -2013,14 +2140,28 @@ var TraceRegistry = class {
     }
     return [...byId.values()];
   }
-  /** This device's writer file for a logical trace, wherever it lives. */
+  /** This device's current writer file for a logical trace, wherever it lives. */
   ownFileFor(traceSlug, identity) {
+    const candidates = [];
     for (const [path, meta] of this.files) {
       if (meta && meta.traceSlug === traceSlug && meta.actorId === identity.actorId) {
-        return path;
+        candidates.push(path);
       }
     }
-    return null;
+    candidates.sort(
+      (a, b) => tracePathOrder(b, this.plugin.settings.tracesFolder) - tracePathOrder(a, this.plugin.settings.tracesFolder) || b.localeCompare(a)
+    );
+    return candidates[0] ?? null;
+  }
+  nextSegmentFor(traceSlug, actorSlug) {
+    let max = 0;
+    for (const path of this.files.keys()) {
+      const info = parseTracePath(path, this.plugin.settings.tracesFolder);
+      if (info && !info.legacy && info.traceSlug === traceSlug && info.actorSlug === actorSlug) {
+        max = Math.max(max, info.segment ?? 0);
+      }
+    }
+    return max + 1;
   }
 };
 var TracePlugin = class extends import_obsidian8.Plugin {
@@ -2244,6 +2385,52 @@ var TracePlugin = class extends import_obsidian8.Plugin {
     automaticIdentityNotice(identity);
     return identity;
   }
+  nextSegmentPath(traceSlug, actorSlug) {
+    return traceSegmentPath(
+      this.settings.tracesFolder,
+      traceSlug,
+      this.registry.nextSegmentFor(traceSlug, actorSlug),
+      currentSegmentMonth(),
+      actorSlug
+    );
+  }
+  shouldRotate(file) {
+    if (this.settings.rotationMode === "never") return false;
+    if (file.stat.size >= this.settings.rotationMaxBytes) return true;
+    const maxAgeMs = this.settings.rotationMaxAgeDays * 24 * 60 * 60 * 1e3;
+    return Date.now() - file.stat.ctime >= maxAgeMs;
+  }
+  async rotateTraceFile(file, meta) {
+    const content = await this.app.vault.read(file);
+    const result = await verifyTrace(content);
+    if (!result.ok || result.headHash === null) {
+      throw new AppendBlockedError(
+        `"${file.path}" must verify before rotation. Run "Verify integrity".`
+      );
+    }
+    const last = result.entries[result.entries.length - 1];
+    if (!last) {
+      throw new AppendBlockedError(`"${file.path}" has no entries to rotate from.`);
+    }
+    const path = this.nextSegmentPath(meta.traceSlug, meta.actorSlug);
+    const rotated = await this.writer.createTraceFile(this.settings.tracesFolder, meta, {
+      path,
+      initialFields: {
+        seq: 1,
+        timestamp: (/* @__PURE__ */ new Date()).toISOString().replace(/\.\d{3}Z$/, "Z"),
+        actor: meta.actorName,
+        tag: "#rotate",
+        text: formatRotationPayload({
+          previous: file.path,
+          previousSeq: last.seq,
+          previousHead: result.headHash
+        })
+      }
+    });
+    this.registry.rebuild();
+    new import_obsidian8.Notice(`Rotated trace segment to "${rotated.path}".`);
+    return rotated;
+  }
   /** Append through the modal path; creates this device's writer file for
    * the logical trace when it does not exist yet. */
   async appendToTrace(traceSlug, traceName, tag, text) {
@@ -2263,21 +2450,26 @@ var TracePlugin = class extends import_obsidian8.Plugin {
           );
           return;
         }
-        await this.writer.createTraceFile(this.settings.tracesFolder, {
-          traceName,
-          traceSlug,
-          actorName: identity.actorName,
-          actorSlug: identity.actorSlug,
-          actorId: identity.actorId
-        });
+        const created = await this.writer.createTraceFile(
+          this.settings.tracesFolder,
+          {
+            traceName,
+            traceSlug,
+            actorName: identity.actorName,
+            actorSlug: identity.actorSlug,
+            actorId: identity.actorId
+          },
+          { path: this.nextSegmentPath(traceSlug, identity.actorSlug) }
+        );
         this.registry.rebuild();
-        path = this.settings.tracesFolder + "/" + traceFileName(traceSlug, identity.actorSlug);
+        path = created.path;
       }
-      const file = this.app.vault.getAbstractFileByPath(path);
-      if (!(file instanceof import_obsidian8.TFile)) {
+      const found = this.app.vault.getAbstractFileByPath(path);
+      if (!(found instanceof import_obsidian8.TFile)) {
         new import_obsidian8.Notice(`Trace file "${path}" is missing.`);
         return;
       }
+      let file = found;
       const meta = this.registry.get(path) ?? {
         traceName,
         traceSlug,
@@ -2285,6 +2477,9 @@ var TracePlugin = class extends import_obsidian8.Plugin {
         actorSlug: identity.actorSlug,
         actorId: identity.actorId
       };
+      if (this.shouldRotate(file)) {
+        file = await this.rotateTraceFile(file, meta);
+      }
       const appended = await this.writer.appendEntry(file, meta, {
         tag,
         text
@@ -2323,7 +2518,8 @@ var TracePlugin = class extends import_obsidian8.Plugin {
           actorName: identity.actorName,
           actorSlug: identity.actorSlug,
           actorId: identity.actorId
-        }
+        },
+        { path: this.nextSegmentPath(slug, identity.actorSlug) }
       );
       this.registry.rebuild();
       this.lastUsedTrace = slug;

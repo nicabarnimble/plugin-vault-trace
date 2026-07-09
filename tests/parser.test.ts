@@ -5,10 +5,12 @@ import {
 	computeEntryHash,
 	formatAttestationPayload,
 	formatEntryLine,
+	formatRotationPayload,
 	headOf,
 	mergeTimelines,
 	parseAttestationPayload,
 	parseEntryLine,
+	parseRotationPayload,
 	parseTrace,
 	verifyProgression,
 	verifyTrace,
@@ -150,6 +152,24 @@ describe("attestation convention", () => {
 		expect(parseAttestationPayload(`path=Projects/Plan%20A.md sha256=${SHA_A} change=modify`)).toMatchObject({
 			ok: false,
 		});
+	});
+
+	it("serializes and parses #rotate payloads", () => {
+		const payload = formatRotationPayload({
+			previous: "Traces/project-log/0001-2026-07.laptop.md",
+			previousSeq: 123,
+			previousHead: SHA_B,
+		});
+		expect(payload).toBe(`previous=Traces/project-log/0001-2026-07.laptop.md previous_seq=123 previous_head=${SHA_B}`);
+		expect(parseRotationPayload(payload)).toEqual({
+			ok: true,
+			payload: {
+				previous: "Traces/project-log/0001-2026-07.laptop.md",
+				previousSeq: 123,
+				previousHead: SHA_B,
+			},
+		});
+		expect(parseRotationPayload(`previous=x previous_head=${SHA_B} previous_seq=123`)).toMatchObject({ ok: false });
 	});
 
 	it("reports malformed #attest payloads without failing the chain", async () => {

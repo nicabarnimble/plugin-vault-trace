@@ -4,6 +4,7 @@ import { checkNameAgainstActors } from "./identity";
 import type TracePlugin from "./main";
 
 export type EnforcementMode = "enforce" | "warn";
+export type RotationMode = "auto" | "never";
 
 export interface TraceSettings {
 	/** Folder where trace files live and new writer files are created. */
@@ -19,6 +20,12 @@ export interface TraceSettings {
 	tagSet: string[];
 	/** CodeMirror read-only protection for trace files. */
 	readOnlyGuard: boolean;
+	/** Segment rotation policy for writer files. */
+	rotationMode: RotationMode;
+	/** Rotate when the active writer file reaches this many bytes. */
+	rotationMaxBytes: number;
+	/** Rotate when the active writer file is this old. */
+	rotationMaxAgeDays: number;
 }
 
 export const DEFAULT_SETTINGS: TraceSettings = {
@@ -29,6 +36,9 @@ export const DEFAULT_SETTINGS: TraceSettings = {
 	displayTemplate: DEFAULT_TEMPLATE,
 	tagSet: ["note", "agent", "decision", "milestone"],
 	readOnlyGuard: true,
+	rotationMode: "auto",
+	rotationMaxBytes: 1_000_000,
+	rotationMaxAgeDays: 365,
 };
 
 const TAG_TOKEN_RE = /^[a-z0-9][a-z0-9_-]*$/;
@@ -68,6 +78,58 @@ export class TraceSettingTab extends PluginSettingTab {
 							value.replace(/^\/+|\/+$/g, "") || "Traces";
 						await this.plugin.saveSettings();
 						this.plugin.registry.rebuild();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName("Rotation")
+			.setDesc(
+				"Auto starts a new segment when this writer's file reaches the size or age limit. Never keeps one file per writer."
+			)
+			.addDropdown((dropdown) =>
+				dropdown
+					.addOption("auto", "Auto")
+					.addOption("never", "Never")
+					.setValue(this.plugin.settings.rotationMode)
+					.onChange(async (value) => {
+						this.plugin.settings.rotationMode = value === "never" ? "never" : "auto";
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName("Max segment size")
+			.setDesc("Auto-rotation size limit in megabytes. Default: 1 megabyte.")
+			.addText((text) =>
+				text
+					.setPlaceholder("1")
+					.setValue(String(this.plugin.settings.rotationMaxBytes / 1_000_000))
+					.onChange(async (value) => {
+						const mb = Number(value.trim());
+						if (!Number.isFinite(mb) || mb <= 0) {
+							new Notice("Max segment size must be a positive number.");
+							return;
+						}
+						this.plugin.settings.rotationMaxBytes = Math.round(mb * 1_000_000);
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName("Max segment age")
+			.setDesc("Auto-rotation age limit in days. Default: 365 days.")
+			.addText((text) =>
+				text
+					.setPlaceholder("365")
+					.setValue(String(this.plugin.settings.rotationMaxAgeDays))
+					.onChange(async (value) => {
+						const days = Number(value.trim());
+						if (!Number.isFinite(days) || days <= 0) {
+							new Notice("Max segment age must be a positive number of days.");
+							return;
+						}
+						this.plugin.settings.rotationMaxAgeDays = Math.round(days);
+						await this.plugin.saveSettings();
 					})
 			);
 
