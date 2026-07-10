@@ -1714,52 +1714,6 @@ var TraceSettingTab = class extends import_obsidian6.PluginSettingTab {
         await this.plugin.saveSettings();
       })
     );
-    const retentionEl = containerEl.createDiv({ cls: "trace-danger-zone" });
-    new import_obsidian6.Setting(retentionEl).setName("Danger zone: retention").setDesc(
-      "Retention moves old trace files to trash during verification. Leave limits blank unless older segments are backed up or no longer needed in Obsidian."
-    );
-    new import_obsidian6.Setting(retentionEl).setName("Retention age").setDesc(
-      "Move trace files older than this many days to trash during verification. Leave blank to keep forever."
-    ).addText(
-      (text) => text.setPlaceholder("Forever").setValue(
-        this.plugin.settings.retentionMaxAgeDays === 0 ? "" : String(this.plugin.settings.retentionMaxAgeDays)
-      ).onChange(async (value) => {
-        const trimmed = value.trim();
-        if (trimmed === "") {
-          this.plugin.settings.retentionMaxAgeDays = 0;
-          await this.plugin.saveSettings();
-          return;
-        }
-        const days = Number(trimmed);
-        if (!Number.isFinite(days) || days <= 0) {
-          new import_obsidian6.Notice("Retention age must be blank or a positive number of days.");
-          return;
-        }
-        this.plugin.settings.retentionMaxAgeDays = Math.round(days);
-        await this.plugin.saveSettings();
-      })
-    );
-    new import_obsidian6.Setting(retentionEl).setName("Retention size").setDesc(
-      "Move oldest trace files to trash until total trace storage is under this many megabytes. Leave blank for infinite."
-    ).addText(
-      (text) => text.setPlaceholder("Infinite").setValue(
-        this.plugin.settings.retentionMaxBytes === 0 ? "" : String(this.plugin.settings.retentionMaxBytes / 1e6)
-      ).onChange(async (value) => {
-        const trimmed = value.trim();
-        if (trimmed === "") {
-          this.plugin.settings.retentionMaxBytes = 0;
-          await this.plugin.saveSettings();
-          return;
-        }
-        const mb = Number(trimmed);
-        if (!Number.isFinite(mb) || mb <= 0) {
-          new import_obsidian6.Notice("Retention size must be blank or a positive number of megabytes.");
-          return;
-        }
-        this.plugin.settings.retentionMaxBytes = Math.round(mb * 1e6);
-        await this.plugin.saveSettings();
-      })
-    );
     new import_obsidian6.Setting(containerEl).setName("Additional trace paths").setDesc("Files outside the folder to treat as traces, one path per line.").addTextArea(
       (text) => text.setPlaceholder("Logs/deploys.laptop.md").setValue(this.plugin.settings.explicitPaths.join("\n")).onChange(async (value) => {
         this.plugin.settings.explicitPaths = value.split("\n").map((line) => line.trim()).filter((line) => line.length > 0);
@@ -1821,6 +1775,52 @@ var TraceSettingTab = class extends import_obsidian6.PluginSettingTab {
           return;
         }
         this.plugin.settings.tagSet = tokens;
+        await this.plugin.saveSettings();
+      })
+    );
+    const retentionEl = containerEl.createDiv({ cls: "trace-danger-zone" });
+    new import_obsidian6.Setting(retentionEl).setName("Danger zone: retention").setDesc(
+      "Retention moves old trace files to trash during verification. Leave limits blank unless older segments are backed up or no longer needed in Obsidian."
+    );
+    new import_obsidian6.Setting(retentionEl).setName("Retention age").setDesc(
+      "Move trace files older than this many days to trash during verification. Leave blank to keep forever."
+    ).addText(
+      (text) => text.setPlaceholder("Forever").setValue(
+        this.plugin.settings.retentionMaxAgeDays === 0 ? "" : String(this.plugin.settings.retentionMaxAgeDays)
+      ).onChange(async (value) => {
+        const trimmed = value.trim();
+        if (trimmed === "") {
+          this.plugin.settings.retentionMaxAgeDays = 0;
+          await this.plugin.saveSettings();
+          return;
+        }
+        const days = Number(trimmed);
+        if (!Number.isFinite(days) || days <= 0) {
+          new import_obsidian6.Notice("Retention age must be blank or a positive number of days.");
+          return;
+        }
+        this.plugin.settings.retentionMaxAgeDays = Math.round(days);
+        await this.plugin.saveSettings();
+      })
+    );
+    new import_obsidian6.Setting(retentionEl).setName("Retention size").setDesc(
+      "Move oldest trace files to trash until total trace storage is under this many megabytes. Leave blank for infinite."
+    ).addText(
+      (text) => text.setPlaceholder("Infinite").setValue(
+        this.plugin.settings.retentionMaxBytes === 0 ? "" : String(this.plugin.settings.retentionMaxBytes / 1e6)
+      ).onChange(async (value) => {
+        const trimmed = value.trim();
+        if (trimmed === "") {
+          this.plugin.settings.retentionMaxBytes = 0;
+          await this.plugin.saveSettings();
+          return;
+        }
+        const mb = Number(trimmed);
+        if (!Number.isFinite(mb) || mb <= 0) {
+          new import_obsidian6.Notice("Retention size must be blank or a positive number of megabytes.");
+          return;
+        }
+        this.plugin.settings.retentionMaxBytes = Math.round(mb * 1e6);
         await this.plugin.saveSettings();
       })
     );
